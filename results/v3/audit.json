@@ -1,0 +1,24 @@
+{
+  "rows": 7845,
+  "market_noise": 5075,
+  "substantive": 2755,
+  "any_delay": 4076,
+  "more_than_hour": 2259,
+  "delayed_hours_quantiles": {
+    "0.5": 1.6506944444444445,
+    "0.75": 5.652430555555555,
+    "0.9": 22.771944444444443,
+    "0.99": 1463.7588888888888
+  },
+  "actions": {
+    "keep": 5586,
+    "rollback": 2252,
+    "exclude": 7
+  },
+  "predictions": 227504,
+  "briefs": 118,
+  "cutoff_checks": "passed",
+  "input_sha256": "17985ff5baa3f35477ad682f6321f0f0a97e0bca637ecd030cfcd71724a58463",
+  "usage_sha256": "4ff3af5b37b9a9cdc06716694ccce2988d20b67ab5e4ed04b14b401b45029523",
+  "new_api_calls": 0
+}

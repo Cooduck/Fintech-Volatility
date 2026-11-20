@@ -104,13 +104,13 @@ def quality(panel, n, cache, sys, symbol, phase):
     return rows
 
 
-def panel_granger(frames):
+def panel_granger(frames, features=("NewsShock", "SentStd", "ImpactMean")):
     import statsmodels.formula.api as smf
     from statsmodels.tsa.stattools import adfuller
 
     rows = []
     for session, b in frames.groupby("session"):
-        for feature in ["NewsShock", "SentStd", "ImpactMean"]:
+        for feature in features:
             z = (
                 b[["symbol", "date", "sigma", feature]]
                 .sort_values(["symbol", "date"])
