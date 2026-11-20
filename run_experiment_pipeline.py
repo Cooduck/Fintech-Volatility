@@ -9,6 +9,15 @@ from case_study import plots,events_plot
 from analysis_models import OUT,folds,fit,summarize,paired_auc,granger
 
 def main():
+    import sys
+    route=argparse.ArgumentParser(add_help=False)
+    route.add_argument("--study",choices=["original","improved"])
+    chosen,remaining=route.parse_known_args()
+    legacy_flags={"--ticker","--granularity","--time-decay","--intraday-case","--mask-dates","--model"}
+    legacy_request=any(token.split("=",1)[0] in legacy_flags for token in remaining)
+    if chosen.study=="improved" or (chosen.study is None and not legacy_request):
+        from improved_pipeline import main as revised
+        return revised(remaining)
     parser=argparse.ArgumentParser()
     parser.add_argument("--mode",choices=["demo","deepseek"],default="deepseek")
     parser.add_argument("--dry-run",action="store_true")
@@ -18,7 +27,7 @@ def main():
     parser.add_argument("--ticker",choices=["NVDA"],default="NVDA")
     parser.add_argument("--intraday-case",choices=["15m"],default="15m")
     parser.add_argument("--mask-dates",action="store_true",help="also apply date masking to primary specification")
-    args=parser.parse_args()
+    args=parser.parse_args(remaining)
     news={name:load_news(name) for name in ["history","recent"]}
     titles=[t for n in news.values() for t in n.title]
     inputs=titles+[mask(t) for t in titles]

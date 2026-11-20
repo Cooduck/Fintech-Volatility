@@ -1,0 +1,13 @@
+{
+  "new_requests": 877,
+  "new_estimated_usd": 0.27241341599999996,
+  "cumulative_estimated_usd": 0.48429555599999996,
+  "scored_news_rows": 7845,
+  "unique_scoring_keys": 7735,
+  "source_sha256": {
+    "cnbc_finance.csv": "0dbee7689f1486902d47e8011f7043f68ac8ca096b11a33b093d60e48af8a075",
+    "MSFT_finance.csv": "cd6e6d5ba837b2addd8205622a9c51fa30ffe70f1b5943d019d2a388b87c280d",
+    "NVDA_finance.csv": "02f59f76c2c083b0da7429432b868ee998c975128cb8de844bd8929d0e8acfec",
+    "TSLA_finance.csv": "dc7d47011334c92951bf10c9e43e72e2a08d687dd23599c5aa4a925cf8040af9"
+  }
+}

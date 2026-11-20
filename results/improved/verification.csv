@@ -1,0 +1,10 @@
+file,n,folds,first,last
+cached_NVDA_B1_predictions.parquet,15906,5,2025-12-03,2026-11-19
+cached_NVDA_B2_predictions.parquet,15906,5,2025-12-03,2026-11-19
+cached_NVDA_daily_predictions.parquet,7953,5,2025-12-03,2026-11-19
+finance_NVDA_B1_predictions.parquet,15906,5,2025-12-03,2026-11-19
+finance_NVDA_B2_predictions.parquet,15906,5,2025-12-03,2026-11-19
+finance_NVDA_daily_predictions.parquet,7953,5,2025-12-03,2026-11-19
+finance_pooled_B1_predictions.parquet,47718,5,2025-12-03,2026-11-19
+finance_pooled_B2_predictions.parquet,47718,5,2025-12-03,2026-11-19
+finance_pooled_daily_predictions.parquet,23859,5,2025-12-03,2026-11-19

@@ -67,7 +67,7 @@ def granger(df,name,grain):
     for session,block in df.groupby("session"):
         for feat in ["NewsShock","SentStd","ImpactMean"]:
             raw=block[["sigma",feat]].copy()
-            ps=[adfuller(raw[c],autolag="BIC")[1] for c in raw]
+            ps=[adfuller(raw[c],autolag="BIC",result_object=False)[1] for c in raw]
             for c,p in zip(raw,ps):
                 if p>=.05:raw[c]=raw[c].diff()
             tests=grangercausalitytests(raw.dropna(),maxlag=3)

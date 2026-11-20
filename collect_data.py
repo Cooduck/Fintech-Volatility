@@ -83,6 +83,17 @@ def lexicon():
     table=pd.read_csv(io.BytesIO(fetch(url)),usecols=["Word","Positive","Negative"])
     table.query("Positive != 0 or Negative != 0").to_csv(DATA/"lexicon.csv",index=False)
 if __name__=="__main__":
+    import argparse
+    parser=argparse.ArgumentParser()
+    parser.add_argument("--finance",action="store_true",help="采集改进实验的真实财经新闻和行情")
+    parser.add_argument("--finnhub",action="store_true",help="加入有授权的 Finnhub 历史源")
+    opts=parser.parse_args()
+    if opts.finance or opts.finnhub:
+        from collect_finance import collect
+        from cnbc_archive import main as collect_cnbc
+        collect(opts.finnhub)
+        collect_cnbc()
+        raise SystemExit(0)
     with ThreadPoolExecutor(4) as pool:
         jobs={f:pool.submit(f) for f in (recent,market,history,lexicon)}
         for f,j in jobs.items():

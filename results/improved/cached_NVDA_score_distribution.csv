@@ -1,0 +1,12 @@
+impact_level,event_type,count
+0,governance,1
+0,market_noise,133
+0,product_supply,98
+1,earnings,11
+1,governance,20
+1,macro_policy,2
+1,market_noise,4
+1,product_supply,732
+2,governance,1
+2,product_supply,55
+3,governance,1
