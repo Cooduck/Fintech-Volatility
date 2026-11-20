@@ -1,0 +1,57 @@
+utc,volume,high,low,open,close,bucket,minutes_from_release,symbol,event,event_utc
+2026-11-04 09:00:00+00:00,0.0,208.86,204.0,205.0,208.52,after,156.0,NVDA,AP calls Democratic control of the US House,2026-11-04 06:24:00+00:00
+2026-11-04 09:15:00+00:00,0.0,208.5391,207.56,208.51,207.81,after,171.0,NVDA,AP calls Democratic control of the US House,2026-11-04 06:24:00+00:00
+2026-11-04 09:30:00+00:00,0.0,208.5,207.84,207.84,208.4,after,186.0,NVDA,AP calls Democratic control of the US House,2026-11-04 06:24:00+00:00
+2026-11-04 09:45:00+00:00,0.0,208.98,208.25,208.25,208.9386,after,201.0,NVDA,AP calls Democratic control of the US House,2026-11-04 06:24:00+00:00
+2026-11-04 10:00:00+00:00,0.0,209.61,208.51,208.9,209.57,after,216.0,NVDA,AP calls Democratic control of the US House,2026-11-04 06:24:00+00:00
+2026-11-04 09:00:00+00:00,0.0,688.02,676.4,686.63,687.25,after,156.0,QQQ,AP calls Democratic control of the US House,2026-11-04 06:24:00+00:00
+2026-11-04 09:15:00+00:00,0.0,688.0,686.45,687.1,688.0,after,171.0,QQQ,AP calls Democratic control of the US House,2026-11-04 06:24:00+00:00
+2026-11-04 09:30:00+00:00,0.0,689.39,688.02,688.05,688.9,after,186.0,QQQ,AP calls Democratic control of the US House,2026-11-04 06:24:00+00:00
+2026-11-04 09:45:00+00:00,0.0,690.0,688.92,688.92,689.4,after,201.0,QQQ,AP calls Democratic control of the US House,2026-11-04 06:24:00+00:00
+2026-11-04 10:00:00+00:00,0.0,691.17,689.26,689.3,691.02,after,216.0,QQQ,AP calls Democratic control of the US House,2026-11-04 06:24:00+00:00
+2026-11-12 12:00:00+00:00,0.0,160.75,158.91,160.6,160.5,before,-108.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 12:15:00+00:00,0.0,160.86,159.64,160.4924,159.9499,before,-93.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 12:30:00+00:00,0.0,160.77,159.75,159.94,160.2,before,-78.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 12:45:00+00:00,0.0,161.33,159.8595,160.19,160.3,before,-63.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 13:00:00+00:00,0.0,160.98,159.0,160.32,159.0277,before,-48.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 13:15:00+00:00,0.0,173.296,158.45,159.02,158.54,before,-33.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 13:30:00+00:00,0.0,160.91,158.0,158.57,159.18,before,-18.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 13:45:00+00:00,0.0,159.8,154.02,159.18,156.0,crosses_release,-3.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 14:00:00+00:00,0.0,156.01,152.8,155.95,152.88,after,12.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 14:15:00+00:00,0.0,153.0,150.13,152.85,151.0,after,27.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 14:30:00+00:00,238618376.0,162.3300018310547,148.8000030517578,150.99000549316406,159.92999267578125,after,42.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 14:45:00+00:00,54971297.0,163.10000610351562,159.11000061035156,159.92999267578125,162.66000366210938,after,57.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 15:00:00+00:00,40083431.0,162.99000549316406,159.6999969482422,162.67999267578125,161.96499633789062,after,72.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 15:15:00+00:00,41889549.0,166.0,161.82009887695312,161.96499633789062,165.0699005126953,after,87.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 15:30:00+00:00,29787277.0,165.42999267578125,162.85000610351562,165.07000732421875,164.77999877929688,after,102.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 15:45:00+00:00,25494605.0,165.9499969482422,163.66000366210938,164.7751007080078,165.73500061035156,after,117.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 16:00:00+00:00,25074694.0,167.13999938964844,164.63999938964844,165.7301025390625,166.0500030517578,after,132.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 16:15:00+00:00,26015394.0,167.08999633789062,164.2449951171875,166.0399932861328,165.49490356445312,after,147.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 16:30:00+00:00,19803632.0,165.97999572753906,164.05690002441406,165.50999450683594,164.1999969482422,after,162.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 16:45:00+00:00,14873980.0,165.67999267578125,163.8000030517578,164.17999267578125,165.2100067138672,after,177.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 17:00:00+00:00,13492110.0,165.35000610351562,164.00999450683594,165.2100067138672,164.9250030517578,after,192.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 17:15:00+00:00,12255033.0,164.9550018310547,163.66000366210938,164.92999267578125,163.9669952392578,after,207.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 17:30:00+00:00,12000910.0,165.61000061035156,163.60000610351562,163.96499633789062,165.57000732421875,after,222.0,NVDA,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 12:00:00+00:00,0.0,686.149,683.56,684.2,685.7,before,-108.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 12:15:00+00:00,0.0,686.02,683.5524,685.6,683.71,before,-93.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 12:30:00+00:00,0.0,684.072,683.25,683.6376,683.78,before,-78.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 12:45:00+00:00,0.0,683.83,682.975,683.74,683.15,before,-63.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 13:00:00+00:00,0.0,684.67,679.53,683.01,679.71,before,-48.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 13:15:00+00:00,0.0,690.897,679.14,679.66,680.8,before,-33.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 13:30:00+00:00,0.0,682.7,680.6,680.74,682.36,before,-18.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 13:45:00+00:00,0.0,682.69,680.2008,682.42,681.59,crosses_release,-3.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 14:00:00+00:00,0.0,682.23,680.24,681.6831,680.6812,after,12.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 14:15:00+00:00,0.0,681.02,680.0,680.77,680.32,after,27.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 14:30:00+00:00,5890709.0,688.219970703125,679.8400268554688,680.2119750976562,686.72998046875,after,42.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 14:45:00+00:00,1897987.0,688.4199829101562,685.0499877929688,686.6500244140625,687.5150146484375,after,57.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 15:00:00+00:00,1803375.0,687.6950073242188,683.489990234375,687.5050048828125,685.3900756835938,after,72.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 15:15:00+00:00,1185478.0,687.239013671875,684.8499755859375,685.3900146484375,686.3800048828125,after,87.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 15:30:00+00:00,2427639.0,687.969970703125,684.72998046875,686.3400268554688,687.830078125,after,102.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 15:45:00+00:00,1448091.0,691.8699951171875,686.3599853515625,687.8499755859375,691.780029296875,after,117.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 16:00:00+00:00,1610591.0,694.010009765625,689.9299926757812,691.7899780273438,692.97998046875,after,132.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 16:15:00+00:00,1306540.0,694.5598754882812,691.8699951171875,693.02001953125,692.7000122070312,after,147.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 16:30:00+00:00,833130.0,692.8499755859375,690.0499877929688,692.739990234375,690.1699829101562,after,162.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 16:45:00+00:00,831299.0,692.0800170898438,689.6900024414062,690.188720703125,691.5999755859375,after,177.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 17:00:00+00:00,550350.0,691.9249877929688,690.219970703125,691.5640258789062,691.2249755859375,after,192.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 17:15:00+00:00,515298.0,691.2000122070312,689.2520141601562,691.1799926757812,690.3499755859375,after,207.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
+2026-11-12 17:30:00+00:00,1114797.0,692.010009765625,689.7899780273438,690.3400268554688,691.6199951171875,after,222.0,QQQ,NVIDIA announces Jensen Huang resigns as CEO and Colette Kress is appointed interim CEO,2026-11-12 13:48:00+00:00
