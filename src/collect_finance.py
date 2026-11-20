@@ -16,17 +16,17 @@ SYMBOLS = {"NVDA": "1045810", "MSFT": "789019", "TSLA": "1318605"}
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 
-def publisher(symbol, domain):
+def publisher(symbol, domain, *, company=None, start=START, end=END):
     import urllib.request as u
 
-    company = {"NVDA": "Nvidia", "TSLA": "Tesla", "MSFT": "Microsoft"}[symbol]
+    company = company or {"NVDA": "Nvidia", "TSLA": "Tesla", "MSFT": "Microsoft"}[symbol]
     pattern = re.compile(r"\b(?:" + company + "|" + symbol + r")\b", re.I)
     rows = []
     for page in range(1, 501):
         params = {
             "search": company,
-            "after": START.strftime("%Y-%m-%dT%H:%M:%S"),
-            "before": END.strftime("%Y-%m-%dT%H:%M:%S"),
+            "after": start.strftime("%Y-%m-%dT%H:%M:%S"),
+            "before": end.strftime("%Y-%m-%dT%H:%M:%S"),
             "per_page": 100,
             "page": page,
             "_fields": "date_gmt,modified_gmt,title,link",
@@ -67,7 +67,7 @@ def publisher(symbol, domain):
                 available = max(
                     published, pd.to_datetime(article["modified_gmt"], utc=True)
                 )
-                if START <= available < END:
+                if start <= available < end:
                     rows.append(
                         dict(
                             utc=available,

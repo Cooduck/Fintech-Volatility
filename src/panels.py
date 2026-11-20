@@ -13,17 +13,24 @@ def bars(symbol,interval):
     df=pd.read_csv(DATA/f"{symbol}_{interval}.csv",index_col="utc")
     df.index=pd.to_datetime(df.index,utc=True)
     return df.sort_index()
-def price_panel(grain,symbol="NVDA",continuous=False):
-    day=bars(symbol,"1d")
+def price_panel(grain,symbol="NVDA",continuous=False,*,read_bars=bars,schedule_table=SCHEDULE,forecast_date=None):
+    day=read_bars(symbol,"1d")
     day.index=day.index.tz_convert("America/New_York").tz_localize(None).normalize()
-    hour=bars(symbol,"1h") if grain=="halfday" else None
+    hour=read_bars(symbol,"1h") if grain=="halfday" else None
     rows=[]
-    for i,date in enumerate(SCHEDULE.index):
-        if i<2 or date not in day.index or SCHEDULE.index[i-1] not in day.index:continue
-        schedule=SCHEDULE.iloc[i]; prev=SCHEDULE.iloc[i-1]; pc=day.loc[SCHEDULE.index[i-1],"close"]
+    for i,date in enumerate(schedule_table.index):
+        if i<2 or schedule_table.index[i-1] not in day.index:continue
+        future=forecast_date is not None and str(date.date())==forecast_date
+        if date not in day.index and not future:continue
+        schedule=schedule_table.iloc[i]; prev=schedule_table.iloc[i-1]; pc=day.loc[schedule_table.index[i-1],"close"]
+        if future:
+            rows.append(dict(date=forecast_date, session="AM", start=prev.open+pd.Timedelta(hours=3),
+                             cut=schedule.open, end=schedule.open+pd.Timedelta(hours=3),
+                             sigma=np.nan,sigma_intraday=np.nan,ret=np.nan,volume=np.nan,range_now=np.nan))
+            continue
         if grain=="daily":
             d=day.loc[date]
-            windows=[("D",SCHEDULE.iloc[i-2]["close"],prev["close"],schedule["close"],d,abs(np.log(d["close"]/pc)),pc)]
+            windows=[("D",schedule_table.iloc[i-2]["close"],prev["close"],schedule["close"],d,abs(np.log(d["close"]/pc)),pc)]
         else:
             if schedule.open<hour.index.min():continue
             split=schedule.open+pd.Timedelta(hours=3);windows=[]
