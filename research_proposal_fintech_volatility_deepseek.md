@@ -246,19 +246,19 @@ DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ### 第三步：运行实验管线（双模式 + 多口径支持）
 - **离线演示模式（无 APIKEY 也可跑通全流程）**：
   ```bash
-  python run_experiment_pipeline.py --mode demo
+  python src/run_experiment_pipeline.py --mode demo
   ```
   自动加载内置缓存样本与 2026 年 11 月英伟达/宏观选举案例库，秒级输出消融结果与可视化看板。
 - **DeepSeek 真实 API 分析模式（自动读取项目内 `.env`）**：
   ```bash
   # 第一步：先预估本次分析的 token 消耗与费用（不发起真实扣费请求）
-  python run_experiment_pipeline.py --mode deepseek --ticker NVDA --dry-run
+  python src/run_experiment_pipeline.py --mode deepseek --ticker NVDA --dry-run
 
   # 第二步（推荐核心口径 B）：半日双时段滚动预测（AM: 隔夜->早盘；PM: 上午+午间->午盘）
-  python run_experiment_pipeline.py --mode deepseek --ticker NVDA --model deepseek-flash --granularity halfday --intraday-case 15m
+  python src/run_experiment_pipeline.py --mode deepseek --ticker NVDA --model deepseek-flash --granularity halfday --intraday-case 15m
 
   # 可选（口径 A）：跨日收盘截断 + 指数时间衰减加权（用于多年期日度历史数据集）
-  python run_experiment_pipeline.py --mode deepseek --ticker NVDA --model deepseek-flash --granularity daily --time-decay 0.15
+  python src/run_experiment_pipeline.py --mode deepseek --ticker NVDA --model deepseek-flash --granularity daily --time-decay 0.15
   ```
 
 ### 附：核心 DeepSeek API 调用最小代码示例（关闭联网搜索 + 仅读 `.env`）

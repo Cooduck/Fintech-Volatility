@@ -6,7 +6,7 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 import pandas as pd
 
-ROOT=Path(__file__).resolve().parent
+ROOT=Path(__file__).resolve().parents[1]
 DATA=ROOT/"data"
 DATA.mkdir(exist_ok=True)
 def fetch(url, headers=None):

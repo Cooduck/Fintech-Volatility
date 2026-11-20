@@ -6,7 +6,7 @@ from pathlib import Path
 from dotenv import dotenv_values
 from openai import OpenAI, APIStatusError
 
-ROOT=Path(__file__).resolve().parent
+ROOT=Path(__file__).resolve().parents[1]
 CACHE=ROOT/"cache"
 CACHE.mkdir(exist_ok=True)
 MODEL="deepseek-flash"
