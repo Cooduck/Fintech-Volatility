@@ -1,0 +1,61 @@
+{
+  "articles": 20537,
+  "unique_headlines": 20537,
+  "headline_details": {
+    "uncached": 12807,
+    "requests": 1281,
+    "input_tokens_est": 682580,
+    "output_tokens_est": 1088595
+  },
+  "stage2_possible": 4649,
+  "stage2_cached": 0,
+  "off_peak_usd": 1.30296375,
+  "peak_usd": 2.6059275,
+  "accounted_before_usd": 0.48429555599999996,
+  "project_ceiling_usd": 2.0,
+  "by_ticker": {
+    "AAPL": 2496,
+    "AMD": 2491,
+    "AMZN": 1918,
+    "AVGO": 859,
+    "GOOGL": 1982,
+    "META": 1855,
+    "MSFT": 1768,
+    "NVDA": 4985,
+    "TSLA": 2183
+  },
+  "approximate_halfday_coverage": {
+    "AAPL": 0.802771855010661,
+    "AMD": 0.7398720682302772,
+    "AMZN": 0.7366737739872068,
+    "AVGO": 0.43816631130063965,
+    "GOOGL": 0.7100213219616205,
+    "META": 0.7025586353944563,
+    "MSFT": 0.7004264392324094,
+    "NVDA": 0.94136460554371,
+    "TSLA": 0.7654584221748401
+  },
+  "coverage_gate_passed": true,
+  "coverage_passing_tickers": [
+    "AAPL",
+    "AMD",
+    "AMZN",
+    "GOOGL",
+    "META",
+    "MSFT",
+    "NVDA",
+    "TSLA"
+  ],
+  "required_tickers_below_gate": [],
+  "verified_halfday_coverage": {
+    "NVDA": 0.94136460554371,
+    "MSFT": 0.7004264392324094,
+    "TSLA": 0.7654584221748401,
+    "AAPL": 0.802771855010661,
+    "AMZN": 0.7366737739872068,
+    "META": 0.7025586353944563,
+    "GOOGL": 0.7100213219616205,
+    "AMD": 0.7398720682302772,
+    "AVGO": 0.43816631130063965
+  }
+}

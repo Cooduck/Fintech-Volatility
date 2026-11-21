@@ -80,11 +80,14 @@ def fit_components(frame, fields, target):
     )
 
 
-def components(models, frame, fields, target):
+def components(models, frame, fields, target, linear_fields=None):
     x = frame[fields]
+    linear = frame[fields if linear_fields is None else linear_fields]
     if target == "B1":
-        return np.column_stack([model.predict_proba(x)[:, 1] for model in models])
-    return np.column_stack([model.predict(x) for model in models])
+        return np.column_stack(
+            [models[0].predict_proba(linear)[:, 1], models[1].predict_proba(x)[:, 1]]
+        )
+    return np.column_stack([models[0].predict(linear), models[1].predict(x)])
 
 
 def blend(part, model):
@@ -122,18 +125,36 @@ def fit_route(train, fields, target):
 
 def route_scores(frame, route):
     return blend(
-        components(route["models"], frame, route["fields"], route["target"]), route
+        components(
+            route["models"],
+            frame,
+            route["fields"],
+            route["target"],
+            route.get("linear_fields"),
+        ),
+        route,
     )
 
 
-def walk_forward(frame, dates, target, callback=None):
+def walk_forward(
+    frame,
+    dates,
+    target,
+    callback=None,
+    *,
+    groups=GROUPS,
+    route_fitter=fit_route,
+    audit=None,
+):
     rows = []
     errors = []
     for fold, days in enumerate(folds(dates, True), 1):
         test = frame[frame.date.isin(days)]
         train = frame[frame.date.lt(min(days)) & frame.end.le(test.cut.min())]
-        for name, fields in GROUPS.items():
-            route = fit_route(train, fields, target)
+        for name, fields in groups.items():
+            route = route_fitter(train, fields, target)
+            if audit:
+                audit(route, fold, name)
             assert route["trained_through"] <= test.cut.min()
             assert route["inner_train_end"] <= route["validation_cut"]
             score = route_scores(test, route)
@@ -189,7 +210,7 @@ def metrics(table):
     return performance(table)
 
 
-def paired(table, dates, repetitions=1000):
+def paired(table, dates, repetitions=1000, *, baselines=("A", "C")):
     pivot = table.pivot(
         index=["date", "symbol", "y"], columns="group", values="score"
     ).reset_index()
@@ -205,9 +226,9 @@ def paired(table, dates, repetitions=1000):
                 lo95=np.nan,
                 hi95=np.nan,
             )
-            for base in "AC"
+            for base in baselines
         ]
-    values = pivot[["A", "C", "D"]].to_numpy()
+    values = pivot[[*baselines, "D"]].to_numpy()
     from scipy.stats import rankdata
 
     def auc_delta(positions):
@@ -218,7 +239,7 @@ def paired(table, dates, repetitions=1000):
             return None
         ranks = rankdata(values[positions], axis=0)
         auc = (ranks[label].sum(axis=0) - yes * (yes + 1) / 2) / (yes * no)
-        return auc[2] - auc[:2]
+        return auc[-1] - auc[:-1]
 
     rng = np.random.default_rng(20261119)
     samples = []
@@ -238,5 +259,5 @@ def paired(table, dates, repetitions=1000):
             hi95=high[i],
             valid_draws=len(samples),
         )
-        for i, base in enumerate("AC")
+        for i, base in enumerate(baselines)
     ]

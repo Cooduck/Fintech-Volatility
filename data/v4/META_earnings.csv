@@ -1,9 +1,9 @@
-known_at,url,items,symbol
-2026-10-21 20:03:35+00:00,https://www.sec.gov/Archives/edgar/data/1326801/000162828026066700/meta-20261019.htm,"1.01,2.02,8.01,9.01",META
-2026-07-29 20:03:23+00:00,https://www.sec.gov/Archives/edgar/data/1326801/000162828026050596/meta-20260729.htm,"2.02,9.01",META
-2026-04-29 20:05:41+00:00,https://www.sec.gov/Archives/edgar/data/1326801/000162828026028364/meta-20260429.htm,"2.02,9.01",META
-2026-01-28 21:04:20+00:00,https://www.sec.gov/Archives/edgar/data/1326801/000162828026003832/meta-20260128.htm,"2.02,9.01",META
-2025-10-29 20:08:34+00:00,https://www.sec.gov/Archives/edgar/data/1326801/000162828025047114/meta-20251029.htm,"2.02,9.01",META
-2025-07-30 20:13:01+00:00,https://www.sec.gov/Archives/edgar/data/1326801/000162828025036719/meta-20250730.htm,"2.02,9.01",META
-2025-04-30 20:16:00+00:00,https://www.sec.gov/Archives/edgar/data/1326801/000132680125000050/meta-20250430.htm,"2.02,9.01",META
-2025-01-29 21:47:14+00:00,https://www.sec.gov/Archives/edgar/data/1326801/000132680125000014/meta-20250129.htm,"2.02,9.01",META
+known_at,url,items,verified_quarterly,symbol
+2026-10-21 20:03:35+00:00,https://www.sec.gov/Archives/edgar/data/1326801/000162828026066700/meta-20261019.htm,"1.01,2.02,8.01,9.01",True,META
+2026-07-29 20:03:23+00:00,https://www.sec.gov/Archives/edgar/data/1326801/000162828026050596/meta-20260729.htm,"2.02,9.01",True,META
+2026-04-29 20:05:41+00:00,https://www.sec.gov/Archives/edgar/data/1326801/000162828026028364/meta-20260429.htm,"2.02,9.01",True,META
+2026-01-28 21:04:20+00:00,https://www.sec.gov/Archives/edgar/data/1326801/000162828026003832/meta-20260128.htm,"2.02,9.01",True,META
+2025-10-29 20:08:34+00:00,https://www.sec.gov/Archives/edgar/data/1326801/000162828025047114/meta-20251029.htm,"2.02,9.01",True,META
+2025-07-30 20:13:01+00:00,https://www.sec.gov/Archives/edgar/data/1326801/000162828025036719/meta-20250730.htm,"2.02,9.01",True,META
+2025-04-30 20:16:00+00:00,https://www.sec.gov/Archives/edgar/data/1326801/000132680125000050/meta-20250430.htm,"2.02,9.01",True,META
+2025-01-29 21:47:14+00:00,https://www.sec.gov/Archives/edgar/data/1326801/000132680125000014/meta-20250129.htm,"2.02,9.01",True,META

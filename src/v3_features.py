@@ -22,8 +22,21 @@ SOURCE_TIERS = {
     "AP race call": 1.0,
     "NVIDIA via GlobeNewswire": 1.0,
     "PR Newswire": 1.0,
+    "Reuters": 1.0,
+    "WSJ": 1.0,
+    "MarketWatch": 1.0,
+    "Barron's": 1.0,
+    "Bloomberg": 1.0,
+    "Yahoo Finance": 0.3,
+    "Finnhub": 0.3,
+    "techcrunch.com": 0.3,
+    "www.thurrott.com": 0.3,
+    "The Motley Fool": 0.1,
     "siliconangle.com": 0.3,
     "financefeeds.com": 0.3,
+    "wccftech.com": 0.3,
+    "www.networkworld.com": 0.3,
+    "Tom's Hardware": 0.3,
     "247wallst.com": 0.1,
     "finbold.com": 0.1,
     "investorplace.com": 0.1,
@@ -56,6 +69,10 @@ def timestamp_news(index, clock):
     news["action"] = np.select(
         [late & hindsight, late & ~hindsight], ["exclude", "rollback"], default="keep"
     )
+    if "lead_key" in news:
+        refined = news.lead_key.fillna("").ne("")
+        # The title can be backdated for sensitivity analysis. The lead cannot.
+        news.loc[refined & news.action.eq("rollback"), "action"] = "keep"
     news["asof"] = news.available
     if clock == "bounded":
         news = news[news.action.ne("exclude")].copy()

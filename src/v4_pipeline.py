@@ -42,7 +42,7 @@ def output_dir(phase):
     return OUT if phase == "a" else OUT / "phase_b"
 
 
-def replay_case(route, raw, feed, context):
+def replay_case(route, raw, feed, context, derive=None):
     event = events()[-1]
     event_at = pd.Timestamp(event["utc"])
     opening = pd.Timestamp("2026-11-12T14:30Z")
@@ -58,10 +58,16 @@ def replay_case(route, raw, feed, context):
     ]:
         frame.loc[frame.index[-1], "cut"] = cut
         current = build_features(frame, feed, *context).iloc[[-1]]
+        if derive is not None:
+            current = derive(current)
         point = current.iloc[0]
-        parts = components(route["models"], current, route["fields"], route["target"])[
-            0
-        ]
+        parts = components(
+            route["models"],
+            current,
+            route["fields"],
+            route["target"],
+            route.get("linear_fields"),
+        )[0]
         risk = route_scores(current, route)[0]
         known = point.LatestTier1
         decay = (
@@ -253,8 +259,8 @@ def freeze(panel, index, out, phase, source_paths):
     )
 
 
-def run(phase, index):
-    out = output_dir(phase)
+def run(phase, index, *, out=None, freeze_models=True):
+    out = output_dir(phase) if out is None else out
     out.mkdir(parents=True, exist_ok=True)
     symbols = CORE if phase == "a" else list(NAMES)
     rows = []
@@ -309,6 +315,7 @@ def run(phase, index):
                 rows.append(pred.assign(clock=clock, scope=scope, target=target))
         if clock == "conservative":
             granger_family(panel).to_csv(out / "pooled_granger.csv", index=False)
+        if clock == "conservative" and freeze_models:
             source_paths = [
                 INDEX,
                 DATA / "VIX.csv",
@@ -365,7 +372,7 @@ def main(argv=None):
     parser.add_argument(
         "--approved-usd",
         type=float,
-        help="explicit confirmation for uncached Phase B requests",
+        help="total additional Phase B budget, including retries and resumed runs",
     )
     args = parser.parse_args(argv)
     if args.collect:

@@ -1,0 +1,73 @@
+clock,date,symbol,cut,decision,lead_count,guidance_direction,sentiment,volatility_risk_level,certainty,rationale
+conservative,2026-01-30,AAPL,2026-01-30 14:30:00+00:00,mandatory_review,2,not_stated,0.4,2,confirmed,营收利润双位数增长 | 季报业绩披露，营收利润强劲
+conservative,2026-05-01,AAPL,2026-05-01 13:30:00+00:00,mandatory_review,1,not_stated,0.3,2,confirmed,季度财报数据披露
+conservative,2026-07-31,AAPL,2026-07-31 13:30:00+00:00,mandatory_review,1,not_stated,0.1,2,confirmed,财报数据披露，无预期对比
+conservative,2026-11-03,AAPL,2026-11-03 14:30:00+00:00,mandatory_review,2,not_stated,0.4,2,confirmed,营收利润双增，业绩超预期 | 年报营收利润披露，偏正面
+conservative,2026-02-04,AMD,2026-02-04 14:30:00+00:00,mandatory_review,2,not_stated,0.44999999999999996,2,confirmed,四季度营收创纪录，盈利超预期 | 年报业绩披露，营收利润增长
+conservative,2026-05-06,AMD,2026-05-06 13:30:00+00:00,mandatory_review,2,not_stated,0.35,2,confirmed,一季度业绩公布 | 季度财报数据披露
+conservative,2026-08-05,AMD,2026-08-05 13:30:00+00:00,mandatory_review,2,not_stated,0.55,2,confirmed,二季度业绩公布，营收强劲 | 10-Q确认二季度财务数据
+conservative,2026-11-04,AMD,2026-11-04 14:30:00+00:00,mandatory_review,2,not_stated,0.5,2,confirmed,三季度业绩公布，营收利润稳健 | 财报数据披露，营收净利强劲
+conservative,2026-02-06,AMZN,2026-02-06 14:30:00+00:00,mandatory_review,2,not_stated,0.3,2,confirmed,四季度业绩公布，结果待评估 | 年报业绩披露，营收利润增长
+conservative,2026-04-30,AMZN,2026-04-30 13:30:00+00:00,mandatory_review,2,not_stated,0.2,2,confirmed,财报发布，细节未披露 | 季度财报数据披露
+conservative,2026-07-31,AMZN,2026-07-31 13:30:00+00:00,mandatory_review,1,not_stated,0.1,2,confirmed,财报数据披露，无预期对比
+conservative,2026-10-30,AMZN,2026-10-30 13:30:00+00:00,mandatory_review,2,not_stated,0.25,2,confirmed,宣布三季度业绩，无具体数据 | 季报营收利润披露，偏正面
+conservative,2025-12-12,AVGO,2025-12-12 14:30:00+00:00,mandatory_review,1,not_stated,0.4,2,confirmed,季度业绩及下季指引
+conservative,2026-03-05,AVGO,2026-03-05 14:30:00+00:00,mandatory_review,1,not_stated,0.4,2,confirmed,一季报发布并给出指引
+conservative,2026-06-04,AVGO,2026-06-04 13:30:00+00:00,mandatory_review,1,not_stated,0.3,2,confirmed,二季度财报发布，含三季度指引
+conservative,2026-09-03,AVGO,2026-09-03 13:30:00+00:00,mandatory_review,1,not_stated,0.4,2,confirmed,三季度业绩及四季度指引公布
+conservative,2026-02-05,GOOGL,2026-02-05 14:30:00+00:00,mandatory_review,1,not_stated,0.3,2,confirmed,年报业绩披露，营收利润稳健
+conservative,2026-04-30,GOOGL,2026-04-30 13:30:00+00:00,mandatory_review,2,not_stated,0.2,2,confirmed,财报发布，细节未披露 | 季度财报数据披露
+conservative,2026-07-23,GOOGL,2026-07-23 13:30:00+00:00,mandatory_review,2,not_stated,0.15000000000000002,2,confirmed,二季度财报发布，细节未披露 | 财报数据披露，无预期对比
+conservative,2026-10-29,GOOGL,2026-10-29 13:30:00+00:00,mandatory_review,2,not_stated,0.2,2,confirmed,财报发布但无具体数据 | 季报营收利润披露，偏正面
+conservative,2026-01-29,META,2026-01-29 14:30:00+00:00,mandatory_review,2,not_stated,0.15000000000000002,2,confirmed,财报发布，无具体数据 | 全年营收利润披露
+conservative,2026-04-30,META,2026-04-30 13:30:00+00:00,mandatory_review,2,not_stated,0.2,2,confirmed,财报发布，细节未披露 | 季度财报数据披露
+conservative,2026-07-30,META,2026-07-30 13:30:00+00:00,mandatory_review,2,not_stated,0.1,2,confirmed,季度业绩发布，无具体数据 | 财报数据披露，无预期对比
+conservative,2026-10-22,META,2026-10-22 13:30:00+00:00,mandatory_review,1,not_stated,0.1,2,confirmed,季报数据披露，无对比
+conservative,2026-01-29,MSFT,2026-01-29 14:30:00+00:00,mandatory_review,2,not_stated,0.15000000000000002,2,confirmed,财报发布，无具体数据 | 季度营收利润披露
+conservative,2026-04-30,MSFT,2026-04-30 13:30:00+00:00,mandatory_review,2,not_stated,0.2,2,confirmed,财报发布，细节未披露 | 10-Q确认营收净利强劲
+conservative,2026-07-30,MSFT,2026-07-30 13:30:00+00:00,mandatory_review,2,not_stated,0.1,2,confirmed,季度业绩发布，无具体数据 | 年报数据披露，无预期对比
+conservative,2026-10-29,MSFT,2026-10-29 13:30:00+00:00,mandatory_review,2,not_stated,0.2,2,confirmed,财报发布但无具体数据 | 季报营收利润披露，偏正面
+conservative,2026-02-26,NVDA,2026-02-26 14:30:00+00:00,mandatory_review,2,not_stated,0.5,2,confirmed,四季度营收创纪录，同比大增 | 年报业绩披露，盈利强劲
+conservative,2026-05-21,NVDA,2026-05-21 13:30:00+00:00,mandatory_review,2,not_stated,0.44999999999999996,2,confirmed,回购授权及股息上调 | 季度财报数据披露
+conservative,2026-08-27,NVDA,2026-08-27 13:30:00+00:00,mandatory_review,2,not_stated,0.75,2,confirmed,营收同比大增106%，业绩超预期 | 10-Q确认强劲季度业绩
+conservative,2026-11-18,NVDA,2026-11-18 14:30:00+00:00,mandatory_review,1,not_stated,0.7,2,confirmed,营收同比大增，业绩超预期
+conservative,2026-01-29,TSLA,2026-01-29 14:30:00+00:00,mandatory_review,2,not_stated,-0.05,2,confirmed,营收下滑但毛利率提升 | 全年财报数据披露
+conservative,2026-04-23,TSLA,2026-04-23 13:30:00+00:00,mandatory_review,2,not_stated,0.25,2,confirmed,季度业绩发布，盈利正面 | 10-Q确认营收净利数据
+conservative,2026-07-23,TSLA,2026-07-23 13:30:00+00:00,mandatory_review,2,not_stated,0.25,2,confirmed,二季度财报，Robotaxi扩张进展 | 财报数据披露，无预期对比
+conservative,2026-10-22,TSLA,2026-10-22 13:30:00+00:00,mandatory_review,2,not_stated,0.1,2,confirmed,季度财报发布，数据有限 | 季报数据披露，无对比
+bounded,2026-01-30,AAPL,2026-01-30 14:30:00+00:00,mandatory_review,2,not_stated,0.4,2,confirmed,营收利润双位数增长 | 季报业绩披露，营收利润强劲
+bounded,2026-05-01,AAPL,2026-05-01 13:30:00+00:00,mandatory_review,1,not_stated,0.3,2,confirmed,季度财报数据披露
+bounded,2026-07-31,AAPL,2026-07-31 13:30:00+00:00,mandatory_review,1,not_stated,0.1,2,confirmed,财报数据披露，无预期对比
+bounded,2026-11-03,AAPL,2026-11-03 14:30:00+00:00,mandatory_review,2,not_stated,0.4,2,confirmed,营收利润双增，业绩超预期 | 年报营收利润披露，偏正面
+bounded,2026-02-04,AMD,2026-02-04 14:30:00+00:00,mandatory_review,2,not_stated,0.44999999999999996,2,confirmed,四季度营收创纪录，盈利超预期 | 年报业绩披露，营收利润增长
+bounded,2026-05-06,AMD,2026-05-06 13:30:00+00:00,mandatory_review,2,not_stated,0.35,2,confirmed,一季度业绩公布 | 季度财报数据披露
+bounded,2026-08-05,AMD,2026-08-05 13:30:00+00:00,mandatory_review,2,not_stated,0.55,2,confirmed,二季度业绩公布，营收强劲 | 10-Q确认二季度财务数据
+bounded,2026-11-04,AMD,2026-11-04 14:30:00+00:00,mandatory_review,2,not_stated,0.5,2,confirmed,三季度业绩公布，营收利润稳健 | 财报数据披露，营收净利强劲
+bounded,2026-02-06,AMZN,2026-02-06 14:30:00+00:00,mandatory_review,2,not_stated,0.3,2,confirmed,四季度业绩公布，结果待评估 | 年报业绩披露，营收利润增长
+bounded,2026-04-30,AMZN,2026-04-30 13:30:00+00:00,mandatory_review,2,not_stated,0.2,2,confirmed,财报发布，细节未披露 | 季度财报数据披露
+bounded,2026-07-31,AMZN,2026-07-31 13:30:00+00:00,mandatory_review,1,not_stated,0.1,2,confirmed,财报数据披露，无预期对比
+bounded,2026-10-30,AMZN,2026-10-30 13:30:00+00:00,mandatory_review,2,not_stated,0.25,2,confirmed,宣布三季度业绩，无具体数据 | 季报营收利润披露，偏正面
+bounded,2025-12-12,AVGO,2025-12-12 14:30:00+00:00,mandatory_review,1,not_stated,0.4,2,confirmed,季度业绩及下季指引
+bounded,2026-03-05,AVGO,2026-03-05 14:30:00+00:00,mandatory_review,1,not_stated,0.4,2,confirmed,一季报发布并给出指引
+bounded,2026-06-04,AVGO,2026-06-04 13:30:00+00:00,mandatory_review,1,not_stated,0.3,2,confirmed,二季度财报发布，含三季度指引
+bounded,2026-09-03,AVGO,2026-09-03 13:30:00+00:00,mandatory_review,1,not_stated,0.4,2,confirmed,三季度业绩及四季度指引公布
+bounded,2026-02-05,GOOGL,2026-02-05 14:30:00+00:00,mandatory_review,1,not_stated,0.3,2,confirmed,年报业绩披露，营收利润稳健
+bounded,2026-04-30,GOOGL,2026-04-30 13:30:00+00:00,mandatory_review,2,not_stated,0.2,2,confirmed,财报发布，细节未披露 | 季度财报数据披露
+bounded,2026-07-23,GOOGL,2026-07-23 13:30:00+00:00,mandatory_review,2,not_stated,0.15000000000000002,2,confirmed,二季度财报发布，细节未披露 | 财报数据披露，无预期对比
+bounded,2026-10-29,GOOGL,2026-10-29 13:30:00+00:00,mandatory_review,2,not_stated,0.2,2,confirmed,财报发布但无具体数据 | 季报营收利润披露，偏正面
+bounded,2026-01-29,META,2026-01-29 14:30:00+00:00,mandatory_review,2,not_stated,0.15000000000000002,2,confirmed,财报发布，无具体数据 | 全年营收利润披露
+bounded,2026-04-30,META,2026-04-30 13:30:00+00:00,mandatory_review,2,not_stated,0.2,2,confirmed,财报发布，细节未披露 | 季度财报数据披露
+bounded,2026-07-30,META,2026-07-30 13:30:00+00:00,mandatory_review,2,not_stated,0.1,2,confirmed,季度业绩发布，无具体数据 | 财报数据披露，无预期对比
+bounded,2026-10-22,META,2026-10-22 13:30:00+00:00,mandatory_review,1,not_stated,0.1,2,confirmed,季报数据披露，无对比
+bounded,2026-01-29,MSFT,2026-01-29 14:30:00+00:00,mandatory_review,2,not_stated,0.15000000000000002,2,confirmed,财报发布，无具体数据 | 季度营收利润披露
+bounded,2026-04-30,MSFT,2026-04-30 13:30:00+00:00,mandatory_review,2,not_stated,0.2,2,confirmed,财报发布，细节未披露 | 10-Q确认营收净利强劲
+bounded,2026-07-30,MSFT,2026-07-30 13:30:00+00:00,mandatory_review,2,not_stated,0.1,2,confirmed,季度业绩发布，无具体数据 | 年报数据披露，无预期对比
+bounded,2026-10-29,MSFT,2026-10-29 13:30:00+00:00,mandatory_review,2,not_stated,0.2,2,confirmed,财报发布但无具体数据 | 季报营收利润披露，偏正面
+bounded,2026-02-26,NVDA,2026-02-26 14:30:00+00:00,mandatory_review,2,not_stated,0.5,2,confirmed,四季度营收创纪录，同比大增 | 年报业绩披露，盈利强劲
+bounded,2026-05-21,NVDA,2026-05-21 13:30:00+00:00,mandatory_review,2,not_stated,0.44999999999999996,2,confirmed,回购授权及股息上调 | 季度财报数据披露
+bounded,2026-08-27,NVDA,2026-08-27 13:30:00+00:00,mandatory_review,2,not_stated,0.75,2,confirmed,营收同比大增106%，业绩超预期 | 10-Q确认强劲季度业绩
+bounded,2026-11-18,NVDA,2026-11-18 14:30:00+00:00,mandatory_review,1,not_stated,0.7,2,confirmed,营收同比大增，业绩超预期
+bounded,2026-01-29,TSLA,2026-01-29 14:30:00+00:00,mandatory_review,2,not_stated,-0.05,2,confirmed,营收下滑但毛利率提升 | 全年财报数据披露
+bounded,2026-04-23,TSLA,2026-04-23 13:30:00+00:00,mandatory_review,2,not_stated,0.25,2,confirmed,季度业绩发布，盈利正面 | 10-Q确认营收净利数据
+bounded,2026-07-23,TSLA,2026-07-23 13:30:00+00:00,mandatory_review,2,not_stated,0.25,2,confirmed,二季度财报，Robotaxi扩张进展 | 财报数据披露，无预期对比
+bounded,2026-10-22,TSLA,2026-10-22 13:30:00+00:00,mandatory_review,2,not_stated,0.1,2,confirmed,季度财报发布，数据有限 | 季报数据披露，无对比

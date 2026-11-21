@@ -2,6 +2,7 @@
 
 import argparse
 import html
+import hashlib
 import json
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -15,12 +16,12 @@ import requests
 
 from collect_data import ROOT
 from panels import price_panel
-from semantic import ANCHORED, key, score
+from semantic import ANCHORED, key, read, score
 from v3_features import timestamp_news
 from v3_pipeline import INDEX
-from v4_collect import DOMAINS, NAMES, filings, vix_download, yahoo_frame
+from v4_collect import DOMAINS, NAMES, filings, quarterly_releases, vix_download, yahoo_frame
 from v4_features import build_features, inputs, market_frame
-from v4_models import route_scores
+from v4_models import paired, route_scores
 from v4_pipeline import digest, output_dir
 
 OUT = ROOT / "results" / "v4_forward"
@@ -56,8 +57,8 @@ def current_calendar(day):
     ).schedule
 
 
-def load_freeze(phase):
-    folder = output_dir(phase)
+def load_freeze(phase, revision="v4"):
+    folder = ROOT / "results" / "v5" if revision == "v5" else output_dir(phase)
     manifest = json.loads((folder / "frozen_manifest.json").read_text(encoding="utf8"))
     file = folder / "frozen_models.joblib"
     if digest(file) != manifest["model_sha256"]:
@@ -65,7 +66,14 @@ def load_freeze(phase):
     for path, expected in manifest["data_and_code"].items():
         if digest(ROOT / path) != expected:
             raise ValueError(f"Frozen input changed: {path}")
-    return manifest, joblib.load(file)
+    routes = joblib.load(file)
+    if "baseline_sha256" in manifest:
+        baseline = folder / "frozen_baseline.joblib"
+        if digest(baseline) != manifest["baseline_sha256"]:
+            raise ValueError("Frozen baseline digest changed")
+        for target, route in joblib.load(baseline).items():
+            routes[target]["baseline"] = route
+    return manifest, routes
 
 
 def latest_news(symbol, domain, start, cutoff):
@@ -99,6 +107,7 @@ def latest_news(symbol, domain, start, cutoff):
                 dict(
                     symbol=symbol,
                     title=symbol + " | " + title,
+                    original_title=title,
                     url=item["link"],
                     source=domain.split("//")[1],
                     published=pd.Timestamp(item["date_gmt"], tz="UTC").isoformat(),
@@ -121,7 +130,15 @@ def market_reader(day):
     return read
 
 
-def collect_scores(symbols, start, cutoff):
+def snapshot_hash(record):
+    fields = ["symbol", "url", "first_seen_utc", "original_title", "source"]
+    packed = json.dumps(
+        {f: record.get(f) for f in fields}, sort_keys=True, ensure_ascii=False
+    )
+    return hashlib.sha256(packed.encode()).hexdigest()
+
+
+def collect_scores(symbols, start, cutoff, budget=None):
     jobs = [(ticker, domain) for ticker in symbols for domain in DOMAINS]
 
     def collect(job):
@@ -136,16 +153,32 @@ def collect_scores(symbols, start, cutoff):
     failures = [
         dict(symbol=s, source=u, error=err) for (s, u), _, err in responses if err
     ]
-    seen = {(r["symbol"], r["url"]) for r in events("first_seen.jsonl")}
+    archived = events("first_seen.jsonl")
+    for record in archived:
+        if "sha256" in record and record["sha256"] != snapshot_hash(record):
+            raise ValueError("Archived first-seen snapshot digest changed")
+    seen = {(r["symbol"], r["url"]) for r in archived}
     rows = []
     for _, articles, _ in responses:
         for record in articles:
             identity = (record["symbol"], record["url"])
             if identity not in seen:
+                record["sha256"] = snapshot_hash(record)
                 write_event("first_seen.jsonl", record)
                 seen.add(identity)
                 rows.append(record)
-    cache = score([r["title"] for r in rows], system=ANCHORED)
+    if budget is None:
+        cache = score([r["title"] for r in rows], system=ANCHORED)
+    else:
+        spent = sum(x["estimated_usd"] for x in read("usage.jsonl"))
+        cache = score(
+            [r["title"] for r in rows],
+            system=ANCHORED,
+            max_tokens=650,
+            ceiling=spent + budget,
+            # Release each reservation before reserving the next batch.
+            workers=1,
+        )
     for row in rows:
         parsed = cache[key(row["title"], ANCHORED)]
         write_event(
@@ -157,7 +190,7 @@ def collect_scores(symbols, start, cutoff):
     return failures
 
 
-def predict(day, schedule, phase, request_time):
+def predict(day, schedule, phase, request_time, revision="v4"):
     date = str(day.date())
     if date < FIRST_DAY or day not in schedule.index:
         return "outside trading calendar"
@@ -167,7 +200,7 @@ def predict(day, schedule, phase, request_time):
         return "outside the 09:20-09:25 ET capture window"
     if any(row.get("date") == date for row in events("daily_log.jsonl")):
         return "capture already attempted"
-    manifest, routes = load_freeze(phase)
+    manifest, routes = load_freeze(phase, revision)
     if pd.Timestamp(manifest["created_utc"]) >= fixed_cut:
         return "model freeze occurred after this cutoff"
     if pd.Timestamp(manifest["training_dates"][-1]) >= day:
@@ -186,7 +219,9 @@ def predict(day, schedule, phase, request_time):
     )
     start = schedule.iloc[schedule.index.get_loc(day) - 1].open + pd.Timedelta(hours=3)
     try:
-        failures = collect_scores(manifest["symbols"], start, fixed_cut)
+        failures = collect_scores(
+            manifest["symbols"], start, fixed_cut, 0.001 if revision == "v5" else None
+        )
         if any(
             sum(f["symbol"] == symbol for f in failures) == len(DOMAINS)
             for symbol in manifest["symbols"]
@@ -228,15 +263,29 @@ def predict(day, schedule, phase, request_time):
             news = timestamp_news(combined[combined.symbol.eq(symbol)], "conservative")
             frame = build_features(data, news, lex, vix, accepted, notices, schedule)
             point = frame[frame.date.eq(date)]
+            if revision == "v5":
+                from v5_models import derive
+
+                point = derive(point)
+            if len(point) != 1:
+                raise ValueError(f"{symbol} has no complete opening forecast row")
             for target, route in routes.items():
                 raw = route_scores(point, route)[0]
                 active = bool(point.HasLevel3Event.iloc[0])
+                comparison = {}
+                if "baseline" in route:
+                    comparison = dict(
+                        baseline_score=float(route_scores(point, route["baseline"])[0]),
+                        baseline_sha256=manifest["baseline_sha256"],
+                        is_earnings_window=bool(point.is_earnings_window.iloc[0]),
+                    )
                 pending.append(
                     dict(
                         date=date,
                         symbol=symbol,
                         target=target,
                         phase=phase,
+                        revision=revision,
                         feature_cut=fixed_cut,
                         score=float(raw),
                         alert=bool(raw >= route["alert_line"]),
@@ -247,6 +296,7 @@ def predict(day, schedule, phase, request_time):
                         ),
                         first_seen_article_count=int(point.TotalNews.iloc[0]),
                         model_sha256=manifest["model_sha256"],
+                        **comparison,
                     )
                 )
         issued = now()
@@ -288,6 +338,17 @@ def settle(day, schedule, actual_now):
     predictions = events("predictions.jsonl")
     seen = {(r["date"], r["symbol"], r["target"]) for r in events("outcomes.jsonl")}
     reader = market_reader(day)
+
+    @lru_cache(None)
+    def outcomes_for(symbol):
+        return price_panel(
+            "halfday",
+            symbol,
+            continuous=True,
+            read_bars=reader,
+            schedule_table=schedule,
+        )
+
     for entry in predictions:
         date = pd.Timestamp(entry["date"])
         if date not in schedule.index:
@@ -298,13 +359,7 @@ def settle(day, schedule, actual_now):
         identifier = tuple(entry[k] for k in ["date", "symbol", "target"])
         if identifier in seen:
             continue
-        frame = price_panel(
-            "halfday",
-            entry["symbol"],
-            continuous=True,
-            read_bars=reader,
-            schedule_table=schedule,
-        )
+        frame = outcomes_for(entry["symbol"])
         row = frame[frame.date.eq(entry["date"]) & frame.session.eq("AM")]
         if row.empty:
             continue
@@ -332,7 +387,7 @@ def settle(day, schedule, actual_now):
 
 
 def evaluate_forward():
-    """Report only matched, prospectively issued observations after ten settled days."""
+    """Report matched prospective observations after the study's minimum settled days."""
     predictions = pd.DataFrame(events("predictions.jsonl"))
     outcomes = pd.DataFrame(events("outcomes.jsonl"))
     if predictions.empty or outcomes.empty:
@@ -343,11 +398,16 @@ def evaluate_forward():
         outcomes, on=["date", "symbol", "target"], validate="one_to_one"
     )
     rows = []
+    contrasts = []
     for (phase, model, target), batch in matched.groupby(
         ["phase", "model_sha256", "target"]
     ):
         sessions = batch.date.nunique()
-        if sessions < 10 or batch.y.nunique() < 2:
+        if (
+            sessions
+            < (15 if "revision" in batch and batch.revision.eq("v5").any() else 10)
+            or batch.y.nunique() < 2
+        ):
             continue
         rows.append(
             dict(
@@ -362,17 +422,50 @@ def evaluate_forward():
                 recall=float(batch.loc[batch.y.eq(1), "alert"].mean()),
             )
         )
+        comparison_fields = {"baseline_score", "baseline_sha256", "is_earnings_window"}
+        if comparison_fields.issubset(batch.columns):
+            valid = batch.dropna(subset=list(comparison_fields))
+            for baseline, sample in valid.groupby("baseline_sha256"):
+                for scope, subset in [
+                    ("all", sample),
+                    ("regular", sample[sample.is_earnings_window.eq(False)]),
+                ]:
+                    if subset.date.nunique() < 15 or subset.y.nunique() < 2:
+                        continue
+                    pair = pd.concat(
+                        [
+                            subset[["date", "symbol", "y", "score"]].assign(group="D"),
+                            subset[["date", "symbol", "y", "baseline_score"]]
+                            .rename(columns={"baseline_score": "score"})
+                            .assign(group="A"),
+                        ],
+                        ignore_index=True,
+                    )
+                    schedule = current_calendar(pd.Timestamp(subset.date.max()))
+                    days = schedule.loc[subset.date.min() : subset.date.max()].index
+                    contrast = paired(pair, days.strftime("%Y-%m-%d"), baselines=("A",))[0]
+                    contrasts.append(
+                        dict(
+                            phase=phase, model_sha256=model, baseline_sha256=baseline,
+                            target=target, scope=scope, sessions=subset.date.nunique(),
+                            n=len(subset), positive=int(subset.y.sum()),
+                            **contrast,
+                        )
+                    )
     if rows:
-        pd.DataFrame(rows).to_csv(OUT / "evaluation.csv", index=False)
+        pd.DataFrame(rows).to_csv(OUT / "summary.csv", index=False)
+    if contrasts:
+        pd.DataFrame(contrasts).to_csv(OUT / "paired_auc.csv", index=False)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_mutually_exclusive_group(required=True)
     commands.add_argument("--run-once", action="store_true")
-    commands.add_argument("--settle", action="store_true")
+    commands.add_argument("--settle", "--verify", action="store_true")
     commands.add_argument("--status", action="store_true")
     parser.add_argument("--phase", choices=["a", "b"], default="b")
+    parser.add_argument("--revision", choices=["v4", "v5"], default="v4")
     args = parser.parse_args()
     instant = now()
     day = instant.tz_convert("America/New_York").tz_localize(None).normalize()
@@ -386,7 +479,12 @@ def main():
                     predictions=len(events("predictions.jsonl")),
                     settled=len(events("outcomes.jsonl")),
                     phase_ready=(
-                        output_dir(args.phase) / "frozen_manifest.json"
+                        (
+                            ROOT / "results" / "v5"
+                            if args.revision == "v5"
+                            else output_dir(args.phase)
+                        )
+                        / "frozen_manifest.json"
                     ).is_file(),
                 ),
                 default=str,
@@ -396,7 +494,7 @@ def main():
         settle(day, schedule, instant)
         evaluate_forward()
     else:
-        print(predict(day, schedule, args.phase, instant))
+        print(predict(day, schedule, args.phase, instant, args.revision))
 
 
 if __name__ == "__main__":

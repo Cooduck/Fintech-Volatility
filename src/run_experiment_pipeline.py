@@ -11,10 +11,13 @@ from analysis_models import OUT,folds,fit,summarize,paired_auc,granger
 def main():
     import sys
     route=argparse.ArgumentParser(add_help=False)
-    route.add_argument("--study",choices=["original","improved","v3","v4"])
+    route.add_argument("--study",choices=["original","improved","v3","v4","v5"])
     chosen,remaining=route.parse_known_args()
     legacy_flags={"--ticker","--granularity","--time-decay","--intraday-case","--mask-dates","--model"}
     legacy_request=any(token.split("=",1)[0] in legacy_flags for token in remaining)
+    if chosen.study=="v5":
+        from v5_pipeline import main as v5
+        return v5(remaining)
     if chosen.study=="v4":
         from v4_pipeline import main as v4
         return v4(remaining)

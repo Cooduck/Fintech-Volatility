@@ -16,7 +16,9 @@ SYMBOLS = {"NVDA": "1045810", "MSFT": "789019", "TSLA": "1318605"}
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 
-def publisher(symbol, domain, *, company=None, start=START, end=END):
+def publisher(
+    symbol, domain, *, company=None, start=START, end=END, ssl_context=None
+):
     import urllib.request as u
 
     company = company or {"NVDA": "Nvidia", "TSLA": "Tesla", "MSFT": "Microsoft"}[symbol]
@@ -42,6 +44,7 @@ def publisher(symbol, domain, *, company=None, start=START, end=END):
                         },
                     ),
                     timeout=60,
+                    context=ssl_context,
                 ) as response:
                     pages = int(response.headers["X-WP-TotalPages"])
                     records = json.load(response)
@@ -105,7 +108,7 @@ def finnhub(symbol, start, end, token):
     return rows
 
 
-def excerpt(url, form):
+def excerpt(url, form, *, item=None):
     soup = BeautifulSoup(fetch(url), "lxml")
     if form != "8-K":
         facts = []
@@ -153,8 +156,9 @@ def excerpt(url, form):
             return "Financial statements: " + ", ".join(facts[:3])
     text = " ".join(soup.stripped_strings)
     text = re.sub(r"\s+", " ", text)
-    matches = list(re.finditer(r"\bItem\s+(?:[12578]\.\d{2})[.\s:–-]+", text, re.I))
-    for m in matches:
+    item_pattern = re.escape(item) if item else r"[12578]\.\d{2}"
+    heading = rf"\bItem\s+(?:{item_pattern})[.\s:–-]+"
+    for m in re.finditer(heading, text, re.I):
         part = re.split(
             r"\bItem\s+\d\.\d{2}|SIGNATURES", text[m.end() :], maxsplit=1, flags=re.I
         )[0]

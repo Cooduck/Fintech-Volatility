@@ -1,16 +1,16 @@
 # Fintech Volatility
 
-项目通过 `src/run_experiment_pipeline.py` 运行。先在项目根目录创建 Python 虚拟环境并安装依赖。
+当前研究入口为 V5，使用已归档的历史行情、新闻和评分。三股与九股回测、验收结果见 [V5 终版报告](V5终版实验报告.md)。
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python -m pip install -r requirements.txt
+.\.venv\Scripts\python src/run_experiment_pipeline.py --study v5 --phase a *> .log/v5_run.log
+.\.venv\Scripts\python src/run_experiment_pipeline.py --study v5 --phase b --offline
 ```
 
-复现 V3 离线实验并保存运行日志。
+Phase A 从本地输入重跑三股模型比较。Phase B 的离线入口核对历史输入摘要，使用评分归档重跑九股联合回测和常规日分治回测，并与已发布结果逐表对照。核验记录写入 `results/v5/phase_b/offline_reproduction.json`。这两个入口都无需 API 密钥。
 
-```powershell
-.\.venv\Scripts\python src/run_experiment_pipeline.py --study v3 *> .log/v3_run.log
-```
+代码在 `src/`，运行日志在 `.log/`，终版产物在 `results/v5/`。本项目的 Windows 盘前采集与次日核验任务已停用，终版只使用历史数据。
 
-复现前两轮实验可将 `--study v3` 换成 `--study improved --mode demo` 或 `--study original --mode demo`。输入、缓存、结果和本地 `.env` 从项目根目录读取。运行日志保存在 `.log/`。
+历史入口保留 `--study original --mode demo`、`--study improved --mode demo`、`--study v3` 和 `--study v4 --phase a`。九股付费评分的原入口保留 `--approved-usd` 费用保护和断点续跑能力。

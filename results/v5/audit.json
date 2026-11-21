@@ -1,0 +1,9 @@
+{
+  "selected": "soft",
+  "new_api_calls": 0,
+  "usage_before": "4ff3af5b37b9a9cdc06716694ccce2988d20b67ab5e4ed04b14b401b45029523",
+  "usage_after": "4ff3af5b37b9a9cdc06716694ccce2988d20b67ab5e4ed04b14b401b45029523",
+  "cutoff_checks": "passed",
+  "predictions": 23136,
+  "max_tree_shap_reconstruction_error": 4.884981308350689e-15
+}

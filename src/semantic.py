@@ -30,29 +30,37 @@ def client():
     return OpenAI(api_key=token,base_url="https://api.deepseek.com",max_retries=0,timeout=100)
 reserved=0.
 BUDGET=2.0
-def call(cli,system,payload,thinking=False):
+class BudgetExceeded(RuntimeError):
+    pass
+
+def peak_time(stamp):
+    return stamp.weekday()<5 and (1<=stamp.hour<4 or 6<=stamp.hour<10)
+
+def call(cli,system,payload,thinking=False,*,max_tokens=3200,ceiling=None):
     global reserved
-    # UTF-8 byte length bounds headline input tokens conservatively. Use peak rates.
-    estimate=(3200*1.2+(len(system.encode())+len(json.dumps(payload).encode())+128)*.30)/1e6
+    # UTF-8 length bounds text tokens. The default reserves the peak price.
+    factor=2 if ceiling is None or peak_time(datetime.now(timezone.utc)) else 1
+    estimate=(max_tokens*.60+(len(system.encode())+len(json.dumps(payload,ensure_ascii=False).encode())+128)*.15)*factor/1e6
+    limit=BUDGET if ceiling is None else min(ceiling,BUDGET)
     with lock:
         spent=sum(x['estimated_usd'] for x in read('usage.jsonl'))
-        if spent+reserved+estimate>BUDGET:raise RuntimeError("本次研究达到费用保护上限")
+        if spent+reserved+estimate>limit:raise BudgetExceeded("本次研究达到费用保护上限")
         reserved+=estimate
-    try:return request(cli,system,payload,thinking)
+    try:return request(cli,system,payload,thinking,max_tokens=max_tokens)
     finally:
         with lock:reserved-=estimate
-def request(cli,system,payload,thinking=False):
-    resp=cli.chat.completions.create(model=MODEL,messages=[dict(role="system",content=system),dict(role="user",content=json.dumps(payload,ensure_ascii=False))],temperature=0,extra_body={"thinking":{"type":"enabled" if thinking else "disabled"}},response_format={"type":"json_object"},max_tokens=3200)
+def request(cli,system,payload,thinking=False,*,max_tokens=3200):
+    resp=cli.chat.completions.create(model=MODEL,messages=[dict(role="system",content=system),dict(role="user",content=json.dumps(payload,ensure_ascii=False))],temperature=0,extra_body={"thinking":{"type":"enabled" if thinking else "disabled"}},response_format={"type":"json_object"},max_tokens=max_tokens)
     obj=resp.model_dump()
     used=obj["usage"]; stamp=datetime.now(timezone.utc)
-    peak=stamp.weekday()<5 and (1<=stamp.hour<4 or 6<=stamp.hour<10)
+    peak=peak_time(stamp)
     hit=used.get("prompt_cache_hit_tokens") or 0
     cost=(hit*.003+(used["prompt_tokens"]-hit)*.15+used["completion_tokens"]*.60)*(2 if peak else 1)/1e6
     append("usage.jsonl",dict(id=resp.id,utc=stamp.isoformat(),model=resp.model,input=used["prompt_tokens"],hit=hit,output=used["completion_tokens"],estimated_usd=cost,thinking=thinking))
     if any(obj.get(k) or obj["choices"][0]["message"].get(k) or used.get(k) for k in ["annotations","server_tool_calls","tool_calls"]):
         raise RuntimeError("unexpected tools or citations")
     return json.loads((resp.choices[0].message.content or "").strip())
-def score(texts,dry=False,system=SYSTEM):
+def score(texts,dry=False,system=SYSTEM,*,max_tokens=3200,ceiling=None,workers=5):
     lookup={r["key"]:r for r in read("deepseek_cache.jsonl")}
     todo=list(dict.fromkeys(norm(t) for t in texts if key(t,system) not in lookup))
     if dry:return {"uncached":len(todo),"requests":(len(todo)+9)//10,"input_tokens_est":sum(max(1,len(t)//3) for t in todo)+((len(todo)+9)//10)*220,"output_tokens_est":len(todo)*85}
@@ -61,18 +69,26 @@ def score(texts,dry=False,system=SYSTEM):
     def work(batch):
         for attempt in range(4):
             try:
-                rows=call(cli,system,[dict(id=i,headline=t) for i,t in enumerate(batch)])["rows"]
+                rows=call(cli,system,[dict(id=i,headline=t) for i,t in enumerate(batch)],max_tokens=max_tokens,ceiling=ceiling)["rows"]
                 assert len(rows)==len(batch)
                 for i,r in enumerate(rows):
                     assert r["id"]==i and -1<=r["sentiment_score"]<=1 and 0<=r["confidence"]<=1 and type(r["impact_level"]) is int and r["impact_level"] in range(4) and r["event_type"] in TYPES and 0<len(r["rationale"].strip())<=25
                 for r,t in zip(rows,batch):
                     r=dict(r,key=key(t,system),text=t);append("deepseek_cache.jsonl",r);lookup[r["key"]]=r
                 return
+            except BudgetExceeded:
+                raise
             except Exception as e:
                 if isinstance(e,APIStatusError) and e.status_code not in [408,429] and e.status_code<500:raise RuntimeError(f"DeepSeek 返回 {e.status_code}，请检查项目密钥与余额") from None
                 if attempt==3:raise
                 time.sleep(2**attempt)
-    with ThreadPoolExecutor(5) as pool:list(pool.map(work,[todo[i:i+10] for i in range(0,len(todo),10)]))
+    batches = [todo[i:i+10] for i in range(0,len(todo),10)]
+    if workers == 1:
+        for batch in batches:
+            work(batch)
+    else:
+        with ThreadPoolExecutor(workers) as pool:
+            list(pool.map(work, batches))
     return lookup
 if __name__=="__main__":
     from collect_data import events

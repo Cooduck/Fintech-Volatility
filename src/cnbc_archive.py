@@ -45,8 +45,8 @@ def get(url):
             time.sleep(2 ** (attempt + 1))
 
 
-def day_links(day):
-    path = ARCH / (str(day.date()) + ".json")
+def day_links(day, archive=ARCH, identify=names):
+    path = archive / (str(day.date()) + ".json")
     if path.exists():
         return json.loads(path.read_text(encoding="utf8"))
     url = f"https://www.cnbc.com/site-map/articles/{day.year}/{day:%B}/{day.day}/"
@@ -59,7 +59,7 @@ def day_links(day):
         ):
             headline = json.loads(title)
             link = json.loads(link)
-            if names(headline) and "/pro/" not in link:
+            if identify(headline) and "/pro/" not in link:
                 pairs.append(link)
         if not pairs and "site-map" not in raw:
             raise ValueError("Unrecognized sitemap")
@@ -71,10 +71,10 @@ def day_links(day):
         ]
 
 
-def story(link):
+def story(link, archive=ARCH, identify=names):
     import hashlib
 
-    path = ARCH / (hashlib.sha256(link.encode()).hexdigest() + ".json")
+    path = archive / (hashlib.sha256(link.encode()).hexdigest() + ".json")
     if path.exists():
         return json.loads(path.read_text(encoding="utf8"))
     try:
@@ -93,7 +93,7 @@ def story(link):
                 source="CNBC",
                 symbol=s,
             )
-            for s in names(title)
+            for s in identify(title)
             if START <= at < END
         ]
         path.write_text(json.dumps(rows), encoding="utf8")

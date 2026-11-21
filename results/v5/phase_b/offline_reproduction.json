@@ -1,0 +1,22 @@
+{
+  "archived_news_rows": 20537,
+  "checked_input_files": 35,
+  "scored_news_sha256": "1d17c8b02668229e2fc01f148d66cf764c84960b89ae2f5d353fd961946f609a",
+  "usage_before": "6f6e0a43f7bcb48138bac1ba2d02fe74b86bff558840be7096a151726c908906",
+  "usage_after": "6f6e0a43f7bcb48138bac1ba2d02fe74b86bff558840be7096a151726c908906",
+  "reproduced_files": [
+    "results/v4/phase_b/ablation.csv",
+    "results/v4/phase_b/earnings_split.csv",
+    "results/v4/phase_b/paired_auc.csv",
+    "results/v4/phase_b/predictions.parquet",
+    "results/v4/phase_b/corpus_quality.csv",
+    "results/v4/phase_b/pooled_granger.csv",
+    "results/v4/phase_b/event_replay.csv",
+    "results/v5/phase_b/ablation.csv",
+    "results/v5/phase_b/earnings_split.csv",
+    "results/v5/phase_b/paired_auc.csv",
+    "results/v5/phase_b/regular_predictions.parquet",
+    "results/v5/phase_b/earnings_policy.csv",
+    "results/v5/phase_b/acceptance.csv"
+  ]
+}

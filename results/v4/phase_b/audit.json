@@ -1,0 +1,20 @@
+{
+  "phase": "b",
+  "symbols": [
+    "NVDA",
+    "MSFT",
+    "TSLA",
+    "AAPL",
+    "AMZN",
+    "META",
+    "GOOGL",
+    "AMD",
+    "AVGO"
+  ],
+  "predictions": 62178,
+  "sha256_usage_before": "6f6e0a43f7bcb48138bac1ba2d02fe74b86bff558840be7096a151726c908906",
+  "sha256_usage_after": "6f6e0a43f7bcb48138bac1ba2d02fe74b86bff558840be7096a151726c908906",
+  "max_tree_shap_reconstruction_error": 6.217248937900877e-15,
+  "shap_scale": "standalone tree raw score, separate from blended output",
+  "cutoff_checks": "passed"
+}

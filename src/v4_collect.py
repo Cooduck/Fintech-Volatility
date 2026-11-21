@@ -2,9 +2,11 @@
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+import html
 from io import BytesIO
 import json
 import re
+import unicodedata
 from urllib.parse import urlencode
 
 from bs4 import BeautifulSoup
@@ -107,14 +109,15 @@ def quarterly_releases(table):
         & table["items"].str.contains(r"(?<!\d)2\.02(?!\d)", regex=True, na=False)
     ]
     pattern = re.compile(
-        r"(?:financial|earnings|operating) results.{0,120}(?:quarter|months ended|year ended)|"
+        r"(?:financial results|earnings results|operating results|results of operations as of and for)"
+        r".{0,120}(?:quarter|months ended|year ended)|"
         r"(?:quarter|year ended).{0,100}(?:financial|earnings) results|announcing its results for the (?:fiscal )?(?:quarter|year)",
         re.I,
     )
 
     def confirmed(row):
         try:
-            content = excerpt(row.url, "8-K")
+            content = excerpt(row.url, "8-K", item="2.02")
             return bool(pattern.search(content)) and not re.search(
                 r"will (?:post|publish|release) its financial results", content, re.I
             )
@@ -135,19 +138,32 @@ def collect_earnings(symbol):
     save_csv(quarterly_releases(filings(symbol, END)).assign(symbol=symbol), path)
 
 
-def first_paragraph(title, url, *, known_at):
+def headline_identity(title):
+    return " ".join(
+        re.findall(r"\w+", unicodedata.normalize("NFKC", html.unescape(title)).casefold())
+    )
+
+
+def first_paragraph(title, url, *, known_at, fetcher=fetch):
     if "SEC filing" in title:
         raise ValueError("use the SEC snapshot excerpt")
-    soup = BeautifulSoup(fetch(url), "lxml")
+    soup = BeautifulSoup(fetcher(url), "lxml")
     meta = {m.get("property"): m.get("content") for m in soup.select("meta[property]")}
-    modified = meta.get("article:modified_time")
-    if not modified or pd.Timestamp(modified).tz_convert("UTC") > pd.Timestamp(
-        known_at
+    published = pd.Timestamp(meta.get("article:published_time"))
+    modified = pd.Timestamp(meta.get("article:modified_time"))
+    cutoff = pd.Timestamp(known_at)
+    if (
+        published.tzinfo is None
+        or modified.tzinfo is None
+        or max(published, modified) > cutoff
     ):
         raise ValueError(
             "no lead with a verified timestamp at or before the archived news cutoff"
         )
-    for selector in (".group p", "article p", "main p", "div[class*=body] p"):
+    archived_title = title.partition(" | ")[2] or title
+    if headline_identity(meta.get("og:title") or "") != headline_identity(archived_title):
+        raise ValueError("current headline does not match the archived title")
+    for selector in (".ArticleBody-articleBody p", ".group p", "article p", "main p"):
         for tag in soup.select(selector):
             line = tag.get_text(" ", strip=True)
             if len(line.split()) >= 18 and not re.match(
@@ -172,15 +188,15 @@ def collect_research_articles(symbol):
         print(symbol, domain, len(records), flush=True)
 
 
-def collect_filing_news(symbol):
+def collect_filing_news(symbol, expanded=False):
     from collect_finance import excerpt
 
-    path = DATA / "publishers" / f"{symbol}_edgar.csv"
+    path = DATA / "publishers" / (f"{symbol}_edgar_v5.csv" if expanded else f"{symbol}_edgar.csv")
     if path.exists():
         return
     table = filings(symbol, END)
     major = table["items"].str.contains(
-        r"(?<!\d)(?:2\.02|5\.02|1\.01|8\.01)(?!\d)", na=False
+        r"(?<!\d)(?:2\.02|5\.02|1\.01|7\.01|8\.01)(?!\d)", na=False
     )
     selected = table[(table.form.eq("8-K") & major) | table.form.isin(["10-K", "10-Q"])]
     rows = []
