@@ -1,10 +1,7 @@
-"""Run V4 on frozen historical data and prepare approved Phase B scoring."""
+"""Run the historical benchmark and build comparable result tables."""
 
-import argparse
-import hashlib
 import json
 
-import joblib
 import matplotlib
 
 matplotlib.use("Agg")
@@ -13,37 +10,25 @@ import numpy as np
 import pandas as pd
 from statsmodels.stats.multitest import multipletests
 
-from collect_data import ROOT, events
-from improved_pipeline import DATES, panel_granger
-from panels import price_panel
-from semantic import CACHE
-from v3_features import timestamp_news
-from v3_pipeline import INDEX, with_target
-from v4_collect import CORE, DATA, FREEZE, NAMES
-from v4_features import build_features, inputs, market_frame
-from v4_models import (
-    D,
-    metrics,
-    paired,
+from artifacts import digest, publish_bundle
+from config import ARCHIVE_DATA as DATA, BENCHMARK_RESULTS, CACHE, CORE, DATES, FREEZE, NAMES, NEWS_INDEX, PORTFOLIO_ARCHIVE, ROOT
+from evaluation import folds, metrics, paired, panel_granger, qualified_symbols
+from features import build_features, inputs, market_frame, timestamp_news, with_target
+from market_data import announcement, price_panel
+from models import (
+    HARD_GROUPS,
     walk_forward,
     route_scores,
     components,
-    fit_route,
+    fit_hard_route,
 )
 
-OUT = ROOT / "results" / "v4"
-
-
-def digest(path):
-    return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
 def output_dir(phase):
-    return OUT if phase == "a" else OUT / "phase_b"
+    return BENCHMARK_RESULTS if phase == "a" else PORTFOLIO_ARCHIVE
 
 
 def replay_case(route, raw, feed, context, derive=None):
-    event = events()[-1]
+    event = announcement()
     event_at = pd.Timestamp(event["utc"])
     opening = pd.Timestamp("2026-11-12T14:30Z")
     frame = raw[raw.cut.le(opening)].copy()
@@ -97,8 +82,6 @@ def replay_case(route, raw, feed, context, derive=None):
 
 
 def audit_quality(frame, feed, symbol, clock, halfdays):
-    from analysis_models import folds
-
     windows = halfdays[halfdays.date.isin(frame.date.unique())]
     times = feed["asof"]
     news_counts = times.searchsorted(windows.cut, side="right") - times.searchsorted(
@@ -106,7 +89,7 @@ def audit_quality(frame, feed, symbol, clock, halfdays):
     )
     coverage = (news_counts > 0).mean()
     results = []
-    for fold, days in enumerate(folds(DATES, True), 1):
+    for fold, days in enumerate(folds(DATES), 1):
         earlier = frame[frame.date.lt(min(days))]
         train = earlier.end.le(frame.loc[frame.date.isin(days), "cut"].min())
         earlier = earlier[train]
@@ -215,48 +198,21 @@ def dashboard(table, case, out, scope):
     plt.close(fig)
 
 
-def freeze(panel, index, out, phase, source_paths):
+def freeze(panel, out, phase, source_paths):
     dates = sorted(panel.date.unique())
-    fitted = {t: fit_route(with_target(panel, t), D, t) for t in ["B1", "B2"]}
-    model_path = out / "frozen_models.joblib"
-    joblib.dump(fitted, model_path)
-    frozen_sources = [
-        "panels.py",
-        "collect_data.py",
-        "collect_finance.py",
-        "analysis_models.py",
-        "risk_evaluation.py",
-        "improved_pipeline.py",
-        "v3_pipeline.py",
-        "v3_features.py",
-        "v3_models.py",
-        "v4_features.py",
-        "v4_models.py",
-        "v4_collect.py",
-        "v4_pipeline.py",
-        "v4_forward_watcher.py",
-        "semantic.py",
-        "v4_scoring.py",
-    ]
-    paths = (
-        [ROOT / "src" / name for name in frozen_sources]
-        + [ROOT / "requirements.txt"]
-        + source_paths
-    )
-    manifest = dict(
+    models = {
+        target: fit_hard_route(with_target(panel, target), HARD_GROUPS["D"], target)
+        for target in ("B1", "B2")
+    }
+    metadata = dict(
         phase=phase,
         cut_off=FREEZE,
         training_dates=[dates[0], dates[-1]],
         symbols=sorted(panel.symbol.unique()),
         created_utc=pd.Timestamp.now(tz="UTC").isoformat(),
         feature_clock="conservative",
-        model_sha256=digest(model_path),
-        data_and_code={p.relative_to(ROOT).as_posix(): digest(p) for p in paths},
-        publication_note="This manifest records the actual freeze time, not a backdated timestamp.",
     )
-    (out / "frozen_manifest.json").write_text(
-        json.dumps(manifest, indent=2), encoding="utf8"
-    )
+    publish_bundle(out, models, metadata, [ROOT / "requirements.txt", *source_paths])
 
 
 def run(phase, index, *, out=None, freeze_models=True):
@@ -278,24 +234,17 @@ def run(phase, index, *, out=None, freeze_models=True):
             feed = timestamp_news(index[index.symbol.eq(symbol)], clock)
             frame = build_features(raw[symbol], feed, *contexts[symbol])
             frame["y"] = (frame.z > 1.5).astype(int)
-            frame = frame[frame.date.isin(DATES)].dropna(subset=D + ["z", "z_intraday"])
+            frame = frame[frame.date.isin(DATES)].dropna(subset=HARD_GROUPS["D"] + ["z", "z_intraday"])
             if frame.empty:
                 raise ValueError(f"No {symbol} rows on comparison dates")
             frame.to_parquet(out / f"{clock}_{symbol}_features.parquet", index=False)
             quality.extend(audit_quality(frame, feed, symbol, clock, raw[symbol]))
             parts.append(frame)
         panel = pd.concat(parts, ignore_index=True).sort_values(["cut", "symbol"])
-        gate = pd.DataFrame(quality)
-        gate["ok"] = (
-            (gate.coverage >= 0.70)
-            & (gate.negative_all >= 0.15)
-            & (gate.training_material >= 0.10)
-        )
-        qualified = gate[gate.clock.eq(clock)].groupby("symbol").ok.all()
+        qualified = qualified_symbols(pd.DataFrame(quality), clock)
         scopes = {scope_main: panel}
-        if qualified.any():
-            valid = list(qualified.index[qualified])
-            scopes["qualified_only"] = panel[panel.symbol.isin(valid)]
+        if qualified:
+            scopes["qualified_only"] = panel[panel.symbol.isin(qualified)]
         scopes.update({symbol: panel[panel.symbol.eq(symbol)] for symbol in symbols})
         for scope, frame in scopes.items():
             for target in ["B1", "B2"]:
@@ -309,7 +258,8 @@ def run(phase, index, *, out=None, freeze_models=True):
                         )
 
                 pred, error = walk_forward(
-                    with_target(frame, target), DATES, target, callback
+                    with_target(frame, target), DATES, target, callback,
+                    groups=HARD_GROUPS, route_fitter=fit_hard_route,
                 )
                 shap_errors.append(error)
                 rows.append(pred.assign(clock=clock, scope=scope, target=target))
@@ -317,7 +267,7 @@ def run(phase, index, *, out=None, freeze_models=True):
             granger_family(panel).to_csv(out / "pooled_granger.csv", index=False)
         if clock == "conservative" and freeze_models:
             source_paths = [
-                INDEX,
+                NEWS_INDEX,
                 DATA / "VIX.csv",
                 DATA / "earnings_notices.csv",
                 ROOT / "data" / "lexicon.csv",
@@ -332,7 +282,7 @@ def run(phase, index, *, out=None, freeze_models=True):
                     source_paths.append(DATA / f"{symbol}_earnings.csv")
             if phase == "b":
                 source_paths.append(out / "scored_news.csv.gz")
-            freeze(panel, index, out, phase, source_paths)
+            freeze(panel, out, phase, source_paths)
         print(phase, clock, "finished", flush=True)
     pred = pd.concat(rows, ignore_index=True)
     assert not pred.duplicated(
@@ -358,40 +308,3 @@ def run(phase, index, *, out=None, freeze_models=True):
         cutoff_checks="passed",
     )
     (out / "audit.json").write_text(json.dumps(audit, indent=2), encoding="utf8")
-
-
-def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--phase", choices=["a", "b"], default="a")
-    parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument(
-        "--collect",
-        action="store_true",
-        help="refresh or fill missing public data before processing",
-    )
-    parser.add_argument(
-        "--approved-usd",
-        type=float,
-        help="total additional Phase B budget, including retries and resumed runs",
-    )
-    args = parser.parse_args(argv)
-    if args.collect:
-        from v4_collect import run as collect
-
-        collect(args.phase)
-    index = pd.read_csv(INDEX)
-    if args.phase == "a":
-        if args.dry_run:
-            print("Phase A: three tickers, frozen scores, 0 new DeepSeek calls.")
-            return
-    else:
-        from v4_scoring import phase_b
-
-        index = phase_b(index, args.dry_run, args.approved_usd)
-        if args.dry_run:
-            return
-    run(args.phase, index)
-
-
-if __name__ == "__main__":
-    main()

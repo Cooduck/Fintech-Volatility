@@ -1,6 +1,5 @@
 """Coverage-gated nine-stock scoring and a separate regular-day decision policy."""
 
-from datetime import datetime, timezone
 from functools import partial
 import json
 from pathlib import Path
@@ -9,19 +8,15 @@ from tempfile import TemporaryDirectory
 import numpy as np
 import pandas as pd
 
-from analysis_models import folds
-from improved_pipeline import DATES
-from panels import price_panel
-from semantic import ANCHORED, CACHE, key, peak_time, read
-from v3_features import timestamp_news
-from v3_pipeline import INDEX, with_target
-from v4_collect import DATA, NAMES, ROOT
-from v4_features import add_market_context, price_reader
-from v4_models import walk_forward
-from v4_pipeline import digest, output_dir, report_tables, run as mixed_run
-from v4_scoring import LEAD_PROMPT_V5, REQUIRED_COVERAGE, estimate, phase_b, prepare
-from v5_models import GROUPS, derive, fit_route
-from v5_pipeline import OUT
+from artifacts import digest
+from backtest import output_dir, report_tables, run as mixed_run
+from config import ARCHIVE_DATA as DATA, CACHE, DATES, FINAL_RESULTS, NAMES, NEWS_INDEX, PORTFOLIO_RESULTS, ROOT
+from evaluation import folds, qualified_symbols
+from features import add_market_context, derive, price_reader, timestamp_news, with_target
+from market_data import price_panel
+from models import GROUPS, fit_route, walk_forward
+from scoring import prepare, report_estimate, score_portfolio
+from semantic import ANCHORED, key, read
 
 
 def stage1_quality_bounds(symbol, headlines, mornings, scores):
@@ -59,7 +54,7 @@ def stage1_quality_bounds(symbol, headlines, mornings, scores):
     rows = [
         observation("negative_all_stage1", 0, np.ones(len(ordered), dtype=bool), negative, 15)
     ]
-    for fold, dates in enumerate(folds(DATES, True), 1):
+    for fold, dates in enumerate(folds(DATES), 1):
         seen = np.zeros(len(ordered), dtype=bool)
         test_start = mornings.loc[mornings.date.isin(dates), "cut"].min()
         train = mornings[mornings.date.lt(min(dates)) & mornings.end.le(test_start)]
@@ -77,7 +72,7 @@ def verified_coverage(news):
         usecols=columns,
         parse_dates=columns,
     )[columns]
-    oos_dates = {day for fold in folds(DATES, True) for day in fold}
+    oos_dates = {day for fold in folds(DATES) for day in fold}
     vix = pd.read_csv(DATA / "VIX.csv")
     notices = pd.read_csv(DATA / "earnings_notices.csv")
     scores = {row["key"]: row for row in read("deepseek_cache.jsonl")}
@@ -175,12 +170,7 @@ def separate_policy(index, out, variant, *, panel_dir=None):
     }
     parts = []
     earnings = []
-    eligible = pd.read_csv(panel_dir / "corpus_quality.csv")
-    ready = eligible.assign(
-        ok=eligible.coverage.ge(0.70)
-        & eligible.negative_all.ge(0.15)
-        & eligible.training_material.ge(0.10)
-    )
+    quality = pd.read_csv(panel_dir / "corpus_quality.csv")
     test_dates = set(
         pd.read_parquet(panel_dir / "predictions.parquet", columns=["date"]).date
     )
@@ -191,11 +181,11 @@ def separate_policy(index, out, variant, *, panel_dir=None):
             for symbol in index.symbol.unique()
         ]
         panel = derive(pd.concat(frames, ignore_index=True)).sort_values(["cut", "symbol"])
-        qualified = ready[ready.clock.eq(clock)].groupby("symbol").ok.all()
+        qualified = qualified_symbols(quality, clock)
         regular = panel[panel.is_earnings_window.eq(0)]
         scopes = {"full_9": regular}
-        if qualified.any():
-            scopes["qualified_only"] = regular[regular.symbol.isin(qualified.index[qualified])]
+        if qualified:
+            scopes["qualified_only"] = regular[regular.symbol.isin(qualified)]
         for scope, frame in scopes.items():
             for target in ["B1", "B2"]:
                 test, _ = walk_forward(
@@ -249,7 +239,7 @@ def write_acceptance(out, mixed):
 
 def offline_reproduction():
     mixed = output_dir("b")
-    out = OUT / "phase_b"
+    out = PORTFOLIO_RESULTS
     scored = mixed / "scored_news.csv.gz"
     snapshot = json.loads((mixed / "frozen_manifest.json").read_text(encoding="utf8"))
     data = {
@@ -266,7 +256,7 @@ def offline_reproduction():
     ledger = CACHE / "usage.jsonl"
     before = digest(ledger)
     index = pd.read_csv(scored, low_memory=False)
-    candidate = pd.read_csv(OUT / "comparison.csv", nrows=1).candidate.iloc[0]
+    candidate = pd.read_csv(FINAL_RESULTS / "comparison.csv", nrows=1).candidate.iloc[0]
     common = ["ablation.csv", "earnings_split.csv", "paired_auc.csv"]
     checks = [
         (mixed, [*common, "predictions.parquet", "corpus_quality.csv",
@@ -315,34 +305,20 @@ def offline_reproduction():
 def main(args):
     if args.offline:
         return offline_reproduction()
-    base = pd.read_csv(INDEX)
-    headlines = prepare(base)
-    forecast = estimate(headlines, lead_prompt=LEAD_PROMPT_V5)
-    out = OUT / "phase_b"
+    headlines = prepare(pd.read_csv(NEWS_INDEX))
+    out = PORTFOLIO_RESULTS
     out.mkdir(parents=True, exist_ok=True)
     coverage, capacity, quality = verified_coverage(headlines)
     coverage.to_csv(out / "coverage_verified.csv", index=False)
     capacity.to_csv(out / "oos_label_capacity.csv", index=False)
     quality.to_csv(out / "stage1_quality_bounds.csv", index=False)
-    passing = set(coverage.loc[coverage.coverage.ge(0.70), "symbol"])
-    forecast.update(
-        verified_halfday_coverage=coverage.set_index("symbol").coverage.to_dict(),
-        coverage_gate_passed=REQUIRED_COVERAGE.issubset(passing),
-        coverage_passing_tickers=sorted(passing),
-        required_tickers_below_gate=sorted(REQUIRED_COVERAGE - passing),
-    )
-    (out / "estimate.json").write_text(json.dumps(forecast, indent=2), encoding="utf8")
-    print(json.dumps(forecast, indent=2))
+    coverage_by_symbol = coverage.set_index("symbol").coverage.to_dict()
     if args.dry_run:
+        report_estimate(headlines, coverage_by_symbol)
         return
-    if not forecast["coverage_gate_passed"]:
-        raise SystemExit("Seven required tickers must reach 70% half-day coverage before paid scoring.")
-    price_window = "peak_usd" if peak_time(datetime.now(timezone.utc)) else "off_peak_usd"
-    if forecast[price_window] + forecast["accounted_before_usd"] > forecast["project_ceiling_usd"]:
-        raise SystemExit("Estimated project cost exceeds the cost ceiling.")
-    index = phase_b(base, False, args.approved_usd, lead_prompt=LEAD_PROMPT_V5)
+    index = score_portfolio(headlines, coverage_by_symbol, args.approved_usd)
     mixed_run("b", index)
-    manifest = json.loads((OUT / "frozen_manifest.json").read_text(encoding="utf8"))
+    manifest = json.loads((FINAL_RESULTS / "frozen_manifest.json").read_text(encoding="utf8"))
     candidate = manifest["model_variant"]
     separate_policy(index, out, candidate if candidate != "v4_hard" else "soft")
     write_acceptance(out, output_dir("b"))

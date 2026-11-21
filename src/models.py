@@ -1,18 +1,76 @@
-"""Final-round tail compression, sign constraints and chronological feature audit."""
+"""Walk-forward classifiers and regressors, with optional signed coefficients."""
 
 import numpy as np
+import pandas as pd
 from lightgbm import LGBMClassifier, LGBMRegressor
 from scipy.optimize import minimize
 from scipy.special import expit
-from sklearn.base import BaseEstimator
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.linear_model import LogisticRegression, Ridge
 from sklearn.metrics import roc_auc_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.utils.validation import check_is_fitted
 
-from v3_models import TREE_SETTINGS
-from v4_models import A, C, D, WINSOR, TrainQuantileWinsorizer, blend, components
+from evaluation import folds
+from features import BASE, SENTIMENT
+from market_data import MARKET, TECH
+
+TREE_SETTINGS = dict(
+    n_estimators=80,
+    learning_rate=0.035,
+    max_depth=4,
+    num_leaves=9,
+    min_child_samples=12,
+    min_data_in_bin=1,
+    max_bin=127,
+    reg_alpha=0.75,
+    reg_lambda=5.0,
+    random_state=24,
+    n_jobs=2,
+    verbosity=-1,
+)
+
+WINSOR = ["ClusterImpactSum", "NewsShock", "volume_ratio", "vix_z20", "Interaction"]
+HARD_MONOTONE = {
+    "ClusterImpactSum",
+    "NewsShock",
+    "HasLevel3Event",
+    "is_earnings_window",
+    "vix_z20",
+}
+A = TECH + MARKET + BASE
+C = A + SENTIMENT + ["UniqueEventCount", "NoveltyRatio"]
+D = C + ["ClusterImpactSum", "MinSentiment", "HasLevel3Event"]
+HARD_GROUPS = {"A": A, "C": C, "D": D}
+
+
+class TrainQuantileWinsorizer(BaseEstimator, TransformerMixin):
+    def __init__(self, low=0.01, high=0.99, cols=None):
+        self.low = low
+        self.high = high
+        self.cols = cols
+
+    def fit(self, X, y=None):
+        values = np.asarray(X, dtype=float)
+        self.positions_ = (
+            list(range(values.shape[1]))
+            if self.cols is None
+            else [X.columns.get_loc(c) for c in self.cols if c in X.columns]
+        )
+        self.lo_, self.hi_ = np.quantile(
+            values[:, self.positions_], [self.low, self.high], axis=0
+        )
+        return self
+
+    def transform(self, X):
+        check_is_fitted(self, "lo_")
+        values = np.asarray(X, dtype=float).copy()
+        values[:, self.positions_] = np.clip(
+            values[:, self.positions_], self.lo_, self.hi_
+        )
+        return values
+
 
 COLUMNS_C = C + ["NegSentIntensity"]
 COLUMNS_D = (
@@ -36,13 +94,6 @@ MONOTONE_MAP = dict.fromkeys(
     ],
     1,
 )
-
-
-def derive(frame):
-    return frame.assign(
-        NegSentIntensity=(-frame.SentMean).clip(lower=0),
-        NegMinIntensity=(-frame.MinSentiment).clip(lower=0),
-    )
 
 
 class SoftTailCompression(TrainQuantileWinsorizer):
@@ -120,25 +171,48 @@ def make_linear(target, fields, candidate):
             if target == "B1"
             else Ridge(alpha=20.0)
         )
-    return make_pipeline(SoftTailCompression(cols=WINSOR), StandardScaler(), model)
+    transformer = TrainQuantileWinsorizer if candidate == "hard" else SoftTailCompression
+    return make_pipeline(transformer(cols=WINSOR), StandardScaler(), model)
 
 
-def make_tree(target, fields):
-    config = dict(
-        TREE_SETTINGS, monotone_constraints=[MONOTONE_MAP.get(f, 0) for f in fields]
-    )
-    return (
-        LGBMClassifier(**config)
-        if target == "B1"
-        else LGBMRegressor(objective="huber", alpha=0.9, **config)
-    )
+def make_tree(target, fields, candidate):
+    config = dict(TREE_SETTINGS)
+    # The historical hard-clipped control left its regression tree unrestricted.
+    if candidate != "hard":
+        config["monotone_constraints"] = [MONOTONE_MAP.get(field, 0) for field in fields]
+    elif target == "B1":
+        config["monotone_constraints"] = [int(field in HARD_MONOTONE) for field in fields]
+    if target == "B1":
+        return LGBMClassifier(**config)
+    return LGBMRegressor(objective="huber", alpha=0.9, **config)
+
+
+def components(models, frame, fields, target, linear_fields=None):
+    x = frame[fields]
+    linear = frame[fields if linear_fields is None else linear_fields]
+    if target == "B1":
+        return np.column_stack(
+            [models[0].predict_proba(linear)[:, 1], models[1].predict_proba(x)[:, 1]]
+        )
+    return np.column_stack([models[0].predict(linear), models[1].predict(x)])
+
+
+def blend(part, model):
+    return ((part - model["center"]) / model["scale"]) @ model["weights"]
 
 
 def fit_route(train, fields, target, candidate="soft"):
+    if candidate not in {"hard", "soft", "signed"}:
+        raise ValueError(f"Unknown model candidate: {candidate}")
     dates = sorted(train.date.unique())
+    if len(dates) < 2:
+        raise ValueError("Chronological training requires at least two sessions.")
     gap = dates[int(0.65 * len(dates))]
     val = train[train.date.ge(gap)]
     early = train[train.date.lt(gap) & train.end.le(val.cut.min())]
+
+    if target == "B1" and early.y.nunique() != 2:
+        raise ValueError("Inner training requires both classes.")
 
     def response(batch):
         return batch.y if target == "B1" else batch.z.clip(-2.0, 6.0)
@@ -152,7 +226,7 @@ def fit_route(train, fields, target, candidate="soft"):
         "novelty_inner_auc_delta": np.nan,
         "novelty_kept": False,
     }
-    if target == "B1" and "NoveltyRatio" in fields:
+    if candidate != "hard" and target == "B1" and "NoveltyRatio" in fields:
         weights = np.ravel(early_linear[-1].coef_)
         coefficient = weights[linear_fields.index("NoveltyRatio")]
         comparison.update(novelty_inner_coef=coefficient, novelty_kept=True)
@@ -172,7 +246,7 @@ def fit_route(train, fields, target, candidate="soft"):
                 linear_fields = reduced
                 early_linear = alternative
                 comparison["novelty_kept"] = False
-    early_tree = make_tree(target, fields).fit(early[fields], response(early))
+    early_tree = make_tree(target, fields, candidate).fit(early[fields], response(early))
     valid = components((early_linear, early_tree), val, fields, target, linear_fields)
     center = valid.mean(axis=0) if target == "B2" else np.zeros(2)
     scale = valid.std(axis=0) if target == "B2" else np.ones(2)
@@ -186,7 +260,7 @@ def fit_route(train, fields, target, candidate="soft"):
             make_linear(target, linear_fields, candidate).fit(
                 train[linear_fields], response(train)
             ),
-            make_tree(target, fields).fit(train[fields], response(train)),
+            make_tree(target, fields, candidate).fit(train[fields], response(train)),
         ),
         center=center,
         scale=scale,
@@ -201,6 +275,90 @@ def fit_route(train, fields, target, candidate="soft"):
         blend(valid, model), [0.85, 0.95]
     )
     return model
+
+
+def fit_hard_route(train, fields, target):
+    """Reproduce the published hard-clipped benchmark with the shared fitter."""
+    return fit_route(train, fields, target, candidate="hard")
+
+
+def route_scores(frame, route):
+    return blend(
+        components(
+            route["models"],
+            frame,
+            route["fields"],
+            route["target"],
+            route.get("linear_fields"),
+        ),
+        route,
+    )
+
+
+def walk_forward(
+    frame,
+    dates,
+    target,
+    callback=None,
+    *,
+    groups=GROUPS,
+    route_fitter=fit_route,
+    audit=None,
+):
+    rows = []
+    errors = []
+    for fold, days in enumerate(folds(dates), 1):
+        test = frame[frame.date.isin(days)]
+        train = frame[frame.date.lt(min(days)) & frame.end.le(test.cut.min())]
+        for name, fields in groups.items():
+            route = route_fitter(train, fields, target)
+            if audit:
+                audit(route, fold, name)
+            assert route["trained_through"] <= test.cut.min()
+            assert route["inner_train_end"] <= route["validation_cut"]
+            score = route_scores(test, route)
+            prob = target == "B1"
+            stat = (score >= route["brief_line"]) | (
+                (score >= 3.5 * route["prior"]) if prob else False
+            )
+            event = test.HasLevel3Event.astype(bool) if name == "D" else False
+            rows.append(
+                test[
+                    [
+                        "date",
+                        "session",
+                        "symbol",
+                        "cut",
+                        "end",
+                        "y",
+                        "z",
+                        "is_earnings_window",
+                        "confirmed_earnings",
+                    ]
+                ].assign(
+                    group=name,
+                    fold=fold,
+                    score=score,
+                    alert_line=route["alert_line"],
+                    brief_line=route["brief_line"],
+                    last_train_end=route["trained_through"],
+                    is_probability=prob,
+                    alert=score >= route["alert_line"],
+                    stat_brief=stat,
+                    event_brief=event,
+                    brief=stat | event,
+                )
+            )
+            if name == "D":
+                tree = route["models"][1].booster_
+                values = tree.predict(test[fields], pred_contrib=True)
+                raw = tree.predict(test[fields], raw_score=True)
+                error = np.max(np.abs(values.sum(axis=1) - raw))
+                assert error < 1e-6
+                errors.append(float(error))
+                if fold == 5 and callback:
+                    callback(route)
+    return pd.concat(rows, ignore_index=True), max(errors)
 
 
 def weights(route, fold, group):

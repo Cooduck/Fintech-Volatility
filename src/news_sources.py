@@ -1,18 +1,23 @@
-"""Build point-in-time corpora using publisher release times and SEC acceptance times."""
+"""Read publisher pages and archived official filings."""
 
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+import gzip
 import html
 import json
 import re
+import time
 import warnings
-from concurrent.futures import ThreadPoolExecutor
-from urllib.parse import urlencode
-from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
-import pandas as pd
-from collect_data import DATA, fetch, events, yahoo
 
-START = pd.Timestamp("2024-11-19", tz="UTC")
-END = pd.Timestamp("2026-11-20", tz="UTC")
-SYMBOLS = {"NVDA": "1045810", "MSFT": "789019", "TSLA": "1318605"}
+from bs4 import BeautifulSoup, SoupStrainer, XMLParsedAsHTMLWarning
+import pandas as pd
+
+from config import BASE_DATA, END as STUDY_END, START as STUDY_START
+from market_data import fetch
+
+START = pd.Timestamp(STUDY_START, tz="UTC")
+END = pd.Timestamp(STUDY_END, tz="UTC")
+ARCH = BASE_DATA / "cnbc_archive"
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 
@@ -85,29 +90,6 @@ def publisher(
     return rows
 
 
-def finnhub(symbol, start, end, token):
-    # Optional alternative when the user has licensed historical access.
-    rows = []
-    for lo in pd.date_range(start, end, freq="7D", inclusive="left"):
-        hi = min(lo + pd.Timedelta(days=7), end)
-        params = {
-            "symbol": symbol,
-            "from": str(lo.date()),
-            "to": str(hi.date()),
-            "token": token,
-        }
-        items = json.loads(
-            fetch("https://finnhub.io/api/v1/company-news?" + urlencode(params))
-        )
-        for i in items:
-            at = pd.Timestamp(i["datetime"], unit="s", tz="UTC")
-            if lo <= at < hi:
-                rows.append(
-                    dict(utc=at, title=i["headline"], url=i["url"], source=i["source"])
-                )
-    return rows
-
-
 def excerpt(url, form, *, item=None):
     soup = BeautifulSoup(fetch(url), "lxml")
     if form != "8-K":
@@ -167,96 +149,96 @@ def excerpt(url, form, *, item=None):
     raise ValueError("no substantive extract")
 
 
-def sec(symbol):
-    cik = SYMBOLS[symbol]
-    bundle = json.loads(
-        fetch(f"https://data.sec.gov/submissions/CIK{cik.zfill(10)}.json")
-    )
-    chunks = [bundle["filings"]["recent"]]
-    for entry in bundle["filings"]["files"]:
-        if entry["filingTo"] >= str(START.date()) and entry["filingFrom"] < str(
-            END.date()
+TAGS = {
+    "NVDA": r"\b(?:nvidia|nvda)\b",
+    "MSFT": r"\b(?:microsoft|msft|azure)\b",
+    "TSLA": r"\b(?:tesla|tsla)\b",
+}
+
+
+def names(title):
+    return [s for s, pat in TAGS.items() if re.search(pat, title, re.I)]
+
+
+def fetch_cnbc(url):
+    for attempt in range(3):
+        try:
+            with urlopen(
+                Request(
+                    url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 university financial research",
+                        "Accept-Encoding": "gzip",
+                    },
+                ),
+                timeout=18,
+            ) as r:
+                data = r.read()
+                return (
+                    gzip.decompress(data)
+                    if r.headers.get("Content-Encoding") == "gzip"
+                    else data
+                ).decode("utf8", errors="replace")
+        except Exception as exc:
+            if getattr(exc, "code", 0) in (403, 404) or attempt == 2:
+                raise
+            time.sleep(2 ** (attempt + 1))
+
+
+def day_links(day, archive=ARCH, identify=names):
+    path = archive / (str(day.date()) + ".json")
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf8"))
+    url = f"https://www.cnbc.com/site-map/articles/{day.year}/{day:%B}/{day.day}/"
+    try:
+        raw = fetch_cnbc(url)
+        pairs = []
+        for title, link in re.findall(
+            r'"__typename":"cnbcnewsstory","title":("(?:[^"\\]|\\.)*"),"url":("(?:[^"\\]|\\.)*")',
+            raw,
         ):
-            chunks.append(
-                json.loads(fetch("https://data.sec.gov/submissions/" + entry["name"]))
+            headline = json.loads(title)
+            link = json.loads(link)
+            if identify(headline) and "/pro/" not in link:
+                pairs.append(link)
+        if not pairs and "site-map" not in raw:
+            raise ValueError("Unrecognized sitemap")
+        path.write_text(json.dumps(pairs), encoding="utf8")
+        return pairs
+    except Exception as e:
+        return [
+            dict(url=url, error=str(type(e).__name__) + str(getattr(e, "code", "")))
+        ]
+
+
+def story(link, archive=ARCH, identify=names):
+    import hashlib
+
+    path = archive / (hashlib.sha256(link.encode()).hexdigest() + ".json")
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf8"))
+    try:
+        b = BeautifulSoup(fetch_cnbc(link), "lxml", parse_only=SoupStrainer("meta"))
+        meta = {m.get("property"): m.get("content") for m in b.find_all("meta")}
+        pub = pd.to_datetime(meta["article:published_time"], utc=True)
+        mod = pd.to_datetime(meta.get("article:modified_time"), utc=True)
+        at = max(pub, mod) if pd.notna(mod) else pub
+        title = html.unescape(meta["og:title"])
+        rows = [
+            dict(
+                utc=at.isoformat(),
+                published=pub.isoformat(),
+                title=title,
+                url=link,
+                source="CNBC",
+                symbol=s,
             )
-    out = []
-    skips = []
-    for raw in chunks:
-        table = pd.DataFrame(raw)
-        for r in table[table.form.isin(["8-K", "10-Q", "10-K"])].itertuples():
-            at = pd.to_datetime(r.acceptanceDateTime, utc=True)
-            if not START <= at < END:
-                continue
-            url = f"https://www.sec.gov/Archives/edgar/data/{cik}/{r.accessionNumber.replace('-', '')}/{r.primaryDocument}"
-            try:
-                detail = excerpt(url, r.form)
-                out.append(
-                    dict(
-                        utc=at,
-                        title=f"{symbol} {r.form}. " + detail,
-                        url=url,
-                        source="SEC filing",
-                    )
-                )
-            except Exception as e:
-                skips.append(dict(utc=at, url=url, reason=type(e).__name__))
-    pd.DataFrame(skips, columns=["utc", "url", "reason"]).to_csv(
-        DATA / f"{symbol}_sec_skipped.csv", index=False
-    )
-    return out
-
-
-def build(symbol, finnhub_key=None):
-    rows = []
-    for domain in [
-        "https://247wallst.com",
-        "https://investorplace.com",
-        "https://financefeeds.com",
-        "https://finbold.com",
-        "https://siliconangle.com",
-    ]:
-        path = DATA / f"{symbol}_{domain.split('//')[1]}.csv"
-        if not path.exists() or "published" not in pd.read_csv(path, nrows=0).columns:
-            items = publisher(symbol, domain)
-            pd.DataFrame(
-                items, columns=["utc", "published", "title", "url", "source"]
-            ).to_csv(path, index=False)
-        rows += pd.read_csv(path).to_dict("records")
-        print(symbol, domain, len(rows), flush=True)
-    if finnhub_key:
-        rows += finnhub(symbol, START, END, finnhub_key)
-    rows += sec(symbol)
-    for event in events():
-        if symbol == "NVDA" or event["source"] == "AP race call":
-            rows.append(event)
-    df = pd.DataFrame(rows)
-    df.utc = pd.to_datetime(df.utc, utc=True, format="mixed")
-    df = df.sort_values("utc").drop_duplicates(["utc", "title"])
-    df.to_csv(DATA / f"{symbol}_finance.csv", index=False)
-    print(symbol, len(df), df.source.value_counts().to_dict(), flush=True)
-    if symbol != "NVDA":
-        yahoo(symbol, "1d", "2024-08-01", "2026-11-20")
-        yahoo(symbol, "1h", "2024-11-21", "2026-11-20")
-
-
-def collect(include_finnhub=False):
-    from dotenv import dotenv_values
-
-    token = (
-        dotenv_values(DATA.parent / ".env").get("FINNHUB_API_KEY")
-        if include_finnhub
-        else None
-    )
-    if include_finnhub and not token:
-        raise ValueError("请在项目 .env 中设置 FINNHUB_API_KEY")
-    with ThreadPoolExecutor(3) as pool:
-        list(pool.map(lambda s: build(s, token), SYMBOLS))
-
-
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--finnhub", action="store_true")
-    collect(parser.parse_args().finnhub)
+            for s in identify(title)
+            if START <= at < END
+        ]
+        path.write_text(json.dumps(rows), encoding="utf8")
+        return rows
+    except Exception as e:
+        return [
+            dict(url=link, error=str(type(e).__name__) + str(getattr(e, "code", "")))
+        ]

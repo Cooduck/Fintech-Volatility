@@ -3,16 +3,13 @@
 from functools import partial
 import json
 
-import numpy as np
 import pandas as pd
-from scipy.stats import rankdata
 
-from improved_pipeline import DATES
-from v3_pipeline import with_target
-from v4_models import walk_forward
-from v4_pipeline import output_dir
-from v5_models import GROUPS, derive, fit_route
-from v5_pipeline import OUT
+from backtest import output_dir
+from config import DATES, FINAL_RESULTS, PORTFOLIO_RESULTS
+from evaluation import auc_contrasts
+from features import derive, with_target
+from models import GROUPS, fit_route, walk_forward
 
 
 def paired_clock_effect(conservative, bounded):
@@ -29,34 +26,18 @@ def paired_clock_effect(conservative, bounded):
         ["A_conservative", "D_conservative", "A_bounded", "D_bounded"]
     ].to_numpy()
 
-    def gains(positions):
-        label = truth[positions]
-        positive = label.sum()
-        negative = len(label) - positive
-        if not positive or not negative:
-            return None
-        ranks = rankdata(scores[positions], axis=0)
-        auc = (ranks[label].sum(axis=0) - positive * (positive + 1) / 2) / (
-            positive * negative
-        )
-        first, second = np.diff(auc)[[0, 2]]
-        return [first, second, second - first]
+    def gains(auc):
+        conservative_gain = auc[1] - auc[0]
+        bounded_gain = auc[3] - auc[2]
+        return [conservative_gain, bounded_gain, bounded_gain - conservative_gain]
 
     sessions = list(paired.groupby("date").indices.values())
-    length = len(sessions)
-    rng = np.random.default_rng(20261119)
-    samples = []
-    for _ in range(1000):
-        starts = rng.integers(length, size=(length + 4) // 5)
-        draw = ((starts[:, None] + np.arange(5)) % length).ravel()[:length]
-        result = gains(np.concatenate([sessions[i] for i in draw]))
-        if result is not None:
-            samples.append(result)
-    point = gains(np.arange(len(paired)))
-    low, high = np.percentile(samples, [2.5, 97.5], axis=0)
+    point, low, high, valid_draws = auc_contrasts(truth, scores, sessions, gains)
+    if point is None:
+        raise ValueError("The clock comparison requires both outcome classes.")
     return [
         dict(contrast=name, n=len(paired), positive=int(truth.sum()), estimate=value,
-             lo95=lo, hi95=hi, valid_draws=len(samples))
+             lo95=lo, hi95=hi, valid_draws=valid_draws)
         for name, value, lo, hi in zip(
             ["conservative_D-A", "bounded_D-A", "clock_difference"],
             point, low, high,
@@ -65,14 +46,14 @@ def paired_clock_effect(conservative, bounded):
 
 
 def main():
-    out = OUT / "phase_b"
+    out = PORTFOLIO_RESULTS
     mixed = output_dir("b")
     archived = pd.read_parquet(out / "regular_predictions.parquet")
     qualified = archived[archived.scope.eq("qualified_only")]
     symbols = sorted(set(qualified[qualified.clock.eq("conservative")].symbol)
                      & set(qualified[qualified.clock.eq("bounded")].symbol))
     assert symbols
-    variant = json.loads((OUT / "frozen_manifest.json").read_text(encoding="utf8"))["model_variant"]
+    variant = json.loads((FINAL_RESULTS / "frozen_manifest.json").read_text(encoding="utf8"))["model_variant"]
     groups = {
         name: [field for field in fields if field != "is_earnings_window"]
         for name, fields in GROUPS.items()
@@ -102,7 +83,3 @@ def main():
     data = pd.DataFrame(rows)
     data.to_csv(out / "clock_matched_diagnostic.csv", index=False)
     print(data.to_string(index=False), flush=True)
-
-
-if __name__ == "__main__":
-    main()

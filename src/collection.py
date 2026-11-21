@@ -1,18 +1,228 @@
-"""Supplement V4 headlines using individually timestamped public sources."""
+"""Historical market, filings and news collection workflows."""
 
-import argparse
 from concurrent.futures import ThreadPoolExecutor
+import html
+from io import BytesIO
 import json
 import re
 import time
-from urllib.parse import urljoin, urlsplit
+import unicodedata
+from urllib.parse import urlencode, urljoin, urlsplit
 
+from bs4 import BeautifulSoup
 import pandas as pd
 import requests
 from dotenv import dotenv_values
 
-from cnbc_archive import ARCH as PREVIOUS_ARCH, day_links, story
-from v4_collect import DATA, END, NAMES, ROOT, START, collect_filing_news, save_csv
+from config import ARCHIVE_DATA as DATA, CIKS, CORE, END, FREEZE, NAMES, ROOT, START
+from market_data import fetch
+from news_sources import ARCH as CNBC_CACHE, day_links, fetch_cnbc, publisher, story
+
+
+VIX_URL = "https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv"
+PUBLISHER_SITES = [
+    "https://247wallst.com",
+    "https://finbold.com",
+    "https://siliconangle.com",
+    "https://financefeeds.com",
+    "https://investorplace.com",
+]
+
+
+def save_csv(frame, path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix(".tmp")
+    frame.to_csv(temp, index=False)
+    temp.replace(path)
+
+
+def vix_download(until):
+    data = pd.read_csv(BytesIO(fetch(VIX_URL)), usecols=["DATE", "CLOSE"])
+    data.DATE = pd.to_datetime(data.DATE).dt.strftime("%Y-%m-%d")
+    return data[data.DATE.between("2024-08-01", until)].sort_values("DATE")
+
+
+def yahoo_frame(symbol, interval, start, end):
+    query = urlencode(
+        dict(
+            period1=int(pd.Timestamp(start, tz="UTC").timestamp()),
+            period2=int(pd.Timestamp(end, tz="UTC").timestamp()),
+            interval=interval,
+            includePrePost="false",
+        )
+    )
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?{query}"
+    body = json.loads(fetch(url))["chart"]["result"][0]
+    data = pd.DataFrame(body["indicators"]["quote"][0])
+    data.insert(0, "utc", pd.to_datetime(body["timestamp"], unit="s", utc=True))
+    return data.dropna(subset=["open", "high", "low", "close"])
+
+
+def filings(symbol, until):
+    cik = CIKS[symbol]
+    index = json.loads(fetch(f"https://data.sec.gov/submissions/CIK{cik:010d}.json"))[
+        "filings"
+    ]
+    recent = [index["recent"]]
+    for part in index["files"]:
+        if part["filingTo"] >= START and part["filingFrom"] < until:
+            recent.append(
+                json.loads(fetch("https://data.sec.gov/submissions/" + part["name"]))
+            )
+    table = pd.concat([pd.DataFrame(item) for item in recent], ignore_index=True)
+    table["known_at"] = pd.to_datetime(
+        table.acceptanceDateTime, utc=True, format="mixed"
+    )
+    table["url"] = [
+        f"https://www.sec.gov/Archives/edgar/data/{cik}/{a.replace('-', '')}/{p}"
+        for a, p in zip(table.accessionNumber, table.primaryDocument)
+    ]
+    return table[
+        table.known_at.ge(pd.Timestamp(START, tz="UTC"))
+        & table.known_at.lt(pd.Timestamp(until, tz="UTC"))
+    ].drop_duplicates("accessionNumber")
+
+
+def quarterly_releases(table):
+    from news_sources import excerpt
+
+    candidates = table[
+        table.form.eq("8-K")
+        & table["items"].str.contains(r"(?<!\d)2\.02(?!\d)", regex=True, na=False)
+    ]
+    pattern = re.compile(
+        r"(?:financial results|earnings results|operating results|results of operations as of and for)"
+        r".{0,120}(?:quarter|months ended|year ended)|"
+        r"(?:quarter|year ended).{0,100}(?:financial|earnings) results|announcing its results for the (?:fiscal )?(?:quarter|year)",
+        re.I,
+    )
+
+    def confirmed(row):
+        try:
+            content = excerpt(row.url, "8-K", item="2.02")
+            return bool(pattern.search(content)) and not re.search(
+                r"will (?:post|publish|release) its financial results", content, re.I
+            )
+        except (ValueError, OSError):
+            return False
+
+    with ThreadPoolExecutor(3) as pool:
+        flags = list(pool.map(confirmed, candidates.itertuples()))
+    return candidates.loc[flags, ["known_at", "url", "items"]].assign(
+        verified_quarterly=True
+    )
+
+
+def collect_earnings(symbol):
+    path = DATA / f"{symbol}_earnings.csv"
+    if path.exists() and "verified_quarterly" in pd.read_csv(path, nrows=0).columns:
+        return
+    save_csv(quarterly_releases(filings(symbol, END)).assign(symbol=symbol), path)
+
+
+def headline_identity(title):
+    return " ".join(
+        re.findall(r"\w+", unicodedata.normalize("NFKC", html.unescape(title)).casefold())
+    )
+
+
+def first_paragraph(title, url, *, known_at, fetcher=fetch):
+    if "SEC filing" in title:
+        raise ValueError("use the SEC snapshot excerpt")
+    soup = BeautifulSoup(fetcher(url), "lxml")
+    meta = {m.get("property"): m.get("content") for m in soup.select("meta[property]")}
+    published = pd.Timestamp(meta.get("article:published_time"))
+    modified = pd.Timestamp(meta.get("article:modified_time"))
+    cutoff = pd.Timestamp(known_at)
+    if (
+        published.tzinfo is None
+        or modified.tzinfo is None
+        or max(published, modified) > cutoff
+    ):
+        raise ValueError(
+            "no lead with a verified timestamp at or before the archived news cutoff"
+        )
+    archived_title = title.partition(" | ")[2] or title
+    if headline_identity(meta.get("og:title") or "") != headline_identity(archived_title):
+        raise ValueError("current headline does not match the archived title")
+    for selector in (".ArticleBody-articleBody p", ".group p", "article p", "main p"):
+        for tag in soup.select(selector):
+            line = tag.get_text(" ", strip=True)
+            if len(line.split()) >= 18 and not re.match(
+                r"(?i)^(subscribe|sign up|this article|click here)", line
+            ):
+                return " ".join(line.split()[:150])
+    raise ValueError("No accessible article lead")
+
+
+def collect_research_articles(symbol):
+    for domain in PUBLISHER_SITES:
+        path = DATA / "publishers" / f"{symbol}_{domain.split('//')[1]}.csv"
+        if path.exists():
+            continue
+        records = publisher(symbol, domain, company=NAMES[symbol])
+        save_csv(
+            pd.DataFrame(
+                records, columns=["utc", "published", "title", "url", "source"]
+            ),
+            path,
+        )
+        print(symbol, domain, len(records), flush=True)
+
+
+def collect_filing_news(symbol, expanded=False):
+    from news_sources import excerpt
+
+    path = DATA / "publishers" / (f"{symbol}_edgar_v5.csv" if expanded else f"{symbol}_edgar.csv")
+    if path.exists():
+        return
+    table = filings(symbol, END)
+    major = table["items"].str.contains(
+        r"(?<!\d)(?:2\.02|5\.02|1\.01|7\.01|8\.01)(?!\d)", na=False
+    )
+    selected = table[(table.form.eq("8-K") & major) | table.form.isin(["10-K", "10-Q"])]
+    rows = []
+    for row in selected.itertuples():
+        try:
+            detail = excerpt(row.url, row.form)
+        except (OSError, ValueError):
+            continue
+        rows.append(
+            dict(
+                utc=row.known_at,
+                published=pd.NaT,
+                title=f"{symbol} {row.form}. {detail}",
+                source="SEC filing",
+                url=row.url,
+            )
+        )
+    save_csv(
+        pd.DataFrame(rows, columns=["utc", "published", "title", "source", "url"]), path
+    )
+    print(symbol, "SEC", len(rows), flush=True)
+
+
+def collect_market(symbol):
+    for interval, start in [("1d", "2024-08-01"), ("1h", START)]:
+        path = DATA / f"{symbol}_{interval}.csv"
+        if not path.exists():
+            save_csv(yahoo_frame(symbol, interval, start, END), path)
+
+
+def collect_market_bundle(phase):
+    path = DATA / "VIX.csv"
+    if not path.exists():
+        save_csv(vix_download(FREEZE), path)
+    symbols = CORE if phase == "a" else list(NAMES)
+    with ThreadPoolExecutor(3) as pool:
+        list(pool.map(collect_earnings, symbols))
+    if phase == "b":
+        with ThreadPoolExecutor(4) as pool:
+            list(pool.map(collect_market, list(NAMES)[3:]))
+        with ThreadPoolExecutor(4) as pool:
+            list(pool.map(collect_research_articles, list(NAMES)[3:] + ["MSFT"]))
+            list(pool.map(collect_filing_news, list(NAMES)[3:]))
+
 
 TAGS = {
     "NVDA": r"Nvidia|NVDA",
@@ -25,7 +235,7 @@ TAGS = {
     "AMD": r"AMD|Advanced Micro Devices",
     "AVGO": r"AVGO|Broadcom",
 }
-DOMAINS = {
+TRUSTED_DOMAINS = {
     "reuters.com": "Reuters",
     "cnbc.com": "CNBC",
     "marketwatch.com": "MarketWatch",
@@ -65,7 +275,7 @@ def cnbc():
     )
 
     def fetch(link):
-        cached = PREVIOUS_ARCH / (hashlib.sha256(link.encode()).hexdigest() + ".json")
+        cached = CNBC_CACHE / (hashlib.sha256(link.encode()).hexdigest() + ".json")
         if cached.exists():
             rows = json.loads(cached.read_text(encoding="utf8"))
             if rows:
@@ -91,7 +301,6 @@ def fool(symbols=None):
     """Download publicly available investment articles from their monthly index."""
     from xml.etree import ElementTree
     from bs4 import BeautifulSoup, SoupStrainer
-    from cnbc_archive import get
     from hashlib import sha256
 
     symbols = set(NAMES) if symbols is None else set(symbols)
@@ -100,7 +309,7 @@ def fool(symbols=None):
 
     def month(day):
         objects = ElementTree.fromstring(
-            get(f"https://www.fool.com/sitemap/{day:%Y/%m}")
+            fetch_cnbc(f"https://www.fool.com/sitemap/{day:%Y/%m}")
         )
         links = []
         for item in objects:
@@ -125,7 +334,7 @@ def fool(symbols=None):
         if path.exists():
             return json.loads(path.read_text(encoding="utf8"))
         try:
-            soup = BeautifulSoup(get(link), "lxml", parse_only=SoupStrainer("meta"))
+            soup = BeautifulSoup(fetch_cnbc(link), "lxml", parse_only=SoupStrainer("meta"))
             meta = {x.get("property"): x.get("content") for x in soup.find_all("meta")}
             published = pd.to_datetime(meta["article:published_time"], utc=True)
             modified = pd.to_datetime(meta.get("article:modified_time"), utc=True)
@@ -171,7 +380,7 @@ def gdelt(provider=requests):
     rows = []
     for symbol, company in NAMES.items():
         terms = f'("{company}" OR "{symbol}")'
-        whitelist = "(" + " OR ".join(f"domainis:{domain}" for domain in DOMAINS) + ")"
+        whitelist = "(" + " OR ".join(f"domainis:{domain}" for domain in TRUSTED_DOMAINS) + ")"
         for left in pd.date_range(start, end, freq="7D", inclusive="left"):
             right = min(left + pd.Timedelta(days=7), end)
             args = dict(
@@ -197,7 +406,7 @@ def gdelt(provider=requests):
                     errors="coerce",
                 )
                 if (
-                    host in DOMAINS
+                    host in TRUSTED_DOMAINS
                     and pd.notna(at)
                     and left <= at < right
                     and symbol in labels(item["title"])
@@ -208,7 +417,7 @@ def gdelt(provider=requests):
                             published=pd.NaT,
                             title=item["title"],
                             url=item["url"],
-                            source=DOMAINS[host],
+                            source=TRUSTED_DOMAINS[host],
                             symbol=symbol,
                         )
                     )
@@ -273,7 +482,6 @@ def finnhub(provider=requests):
 def specialist():
     import ssl
     import certifi
-    from collect_finance import publisher
 
     queries = [
         ("AMD", "AMD", "https://wccftech.com"),
@@ -361,9 +569,8 @@ def toms():
 def sec_earnings():
     """Cache the opening paragraphs of the earnings releases filed with EDGAR."""
     from bs4 import BeautifulSoup
-    from collect_data import fetch
-    from v3_pipeline import INDEX
-    from v4_scoring import lead_identity, lead_snapshots, prepare
+    from config import NEWS_INDEX
+    from scoring import lead_identity, lead_snapshots, prepare
 
     def retrieve(job):
         (symbol, filing, stamp), news = job
@@ -424,7 +631,7 @@ def sec_earnings():
     )
     filings = filings[filings.verified_quarterly.eq(True)].copy()
     filings["known_at"] = pd.to_datetime(filings.known_at, utc=True, format="mixed")
-    news = prepare(pd.read_csv(INDEX))
+    news = prepare(pd.read_csv(NEWS_INDEX))
     news = news[news.source.eq("SEC filing")].merge(
         filings[["symbol", "url", "known_at"]],
         left_on=["symbol", "url", "utc"],
@@ -454,23 +661,7 @@ def sec_earnings():
     print(len(filings), "quarterly filings checked against the corpus", flush=True)
     print(resolution.status.value_counts().to_string(), flush=True)
 
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "provider",
-        choices=["cnbc", "fool", "gdelt", "finnhub", "sec", "sec_earnings", "specialist", "toms"],
-    )
-    parser.add_argument("--ticker",action="append",choices=list(NAMES))
-    opts = parser.parse_args()
-    if opts.provider == "sec":
-        with ThreadPoolExecutor(3) as pool:
-            list(pool.map(lambda s: collect_filing_news(s, expanded=True), NAMES))
-    elif opts.provider=="fool":
-        fool(opts.ticker)
-    else:
-        globals()[opts.provider]()
-
-
-if __name__ == "__main__":
-    main()
+def collect_sec():
+    """Collect the prescribed SEC item types for every study stock."""
+    with ThreadPoolExecutor(3) as pool:
+        list(pool.map(lambda symbol: collect_filing_news(symbol, expanded=True), NAMES))
