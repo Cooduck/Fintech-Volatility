@@ -1,287 +1,276 @@
 \documentclass{article}
 
 \usepackage[preprint]{neurips_2026}
-
-\usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage{hyperref}
-\usepackage{url}
-\usepackage{booktabs}
-\usepackage{amsfonts}
-\usepackage{amsmath}
-\usepackage{amssymb}
-\usepackage{microtype}
-\usepackage{xcolor}
-\usepackage{graphicx}
-\usepackage{tabularx}
+\usepackage{amsmath,amsfonts,booktabs,graphicx,microtype,tabularx,xcolor}
+\usepackage[hidelinks]{hyperref}
+\renewcommand{\ttdefault}{lmtt}
 
-\definecolor{accentblue}{RGB}{24,78,119}
-\hypersetup{
-  colorlinks=true,
-  linkcolor=accentblue,
-  citecolor=accentblue,
-  urlcolor=accentblue
-}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 
-\title{Leakage-Controlled Abnormal Volatility Early Warning via Closed-Book Large Language Model News Analysis}
-
-\author{%
-  Author Name\thanks{Course research report prepared for \emph{Financial Technology and Artificial Intelligence}. Code, frozen data snapshots, and offline audit logs are archived in the accompanying project repository.} \\
-  Department / Institution \\
-  \texttt{author@institution.edu} \\
-}
+\title{Abnormal Morning Volatility and Closed-Book LLM News Scoring: A Historical Backtest}
+\author{Financial Technology and Artificial Intelligence\\Course research report}
 
 \begin{document}
-
 \maketitle
 
 \begin{abstract}
-Sudden corporate governance shocks and macroeconomic shifts frequently trigger severe equity volatility within hours, yet evaluating whether large language models (LLMs) provide genuine early-warning value requires strict controls against intraday reverse causality, web-search look-ahead, and scheduled-event confounding. We present a lightweight, fully reproducible abnormal volatility early-warning and attribution system built around closed-book calls to the DeepSeek API (\texttt{deepseek-flash}), requiring only a local \texttt{.env} API key and zero local GPU compute. Across five systematic diagnostic iterations (V1--V5), we resolve domain mismatch, threshold collapse, session-mixing interference, earnings confounding, and linear tail saturation. Our final V5 architecture isolates morning-session (AM) prediction under both total-shock (B1, including overnight gap) and pure-intraday (B2, excluding overnight gap) targets, applies TF-IDF event clustering and source-tiered decay weighting to filter 64.7\% market-noise articles, combines soft upper-tail log winsorization with monotone-constrained gradient-boosted trees, and benchmarks against a strong zero-leakage baseline incorporating technical indicators, QQQ market context, CBOE VIX, and SEC 8-K Item 2.02 verified earnings calendars. On the three-stock core panel (NVDA, MSFT, TSLA; 723 out-of-sample AM sessions) under conservative modification timestamps, V5 raises B1 ROC-AUC to 0.707 (PR-AUC 0.301, Recall 40.3\%), yields a statistically significant incremental gain of cluster-level impact features over sentiment alone ($\Delta\text{AUC}=+0.017$, 95\% CI $[+0.002, +0.037]$), passes pre-registered Granger lead-lag testing on pure-intraday B2 ($F=5.955$, $p=0.0028$, BH $q=0.0112$), and achieves strict monotonic score increases across the November 12, 2026 NVIDIA CEO transition replay on both B1 and B2. Expanding to nine mega-cap technology equities (20,537 deduplicated headlines; cumulative API cost \$0.9186), non-earnings regular-day semantic gains are statistically significant under bounded publication-time sensitivity on qualified stocks (B1 $+0.0597$ $[+0.0168, +0.1087]$; B2 $+0.0317$ $[+0.0036, +0.0648]$) while attenuating under conservative modification timestamps, highlighting headline timestamp latency as the primary practical bottleneck in real-world financial NLP.
+Does structured news scoring improve warnings of abnormal equity volatility beyond information already available from prices, market conditions, and earnings schedules? We evaluate closed-book DeepSeek headline and lead scores in a historical walk-forward backtest. We distinguish total morning volatility, including the overnight gap (B1), from regular-hours morning volatility (B2). On 723 stock-mornings for NVDA, MSFT, and TSLA, the final model reaches a conservative-clock B1 ROC-AUC of 0.707 (average precision 0.301, recall 40.3\%), compared with 0.694 for the baseline. The full feature group improves on the sentiment group by 0.017 AUC in the B1 regular-day slice (pointwise 95\% interval $[0.002, 0.037]$). Among four prespecified lead--lag tests, lagged cluster impact is associated with subsequent B2 volatility on the three-stock panel (Benjamini--Hochberg-adjusted $q=0.0112$). Both model scores increase in a retrospective replay of NVIDIA's November 12, 2026 announcement. The nine-stock extension does not meet its primary acceptance criteria. Sensitivity estimates are positive on three stocks when selected headlines are assigned an earlier timestamp, but intervals for the matched differences between clocks include zero. Offline reproduction uses archived scores and incurs no new API calls.
 \end{abstract}
 
 \section{Introduction}
 \label{sec:intro}
 
-Financial markets respond rapidly to unscheduled corporate governance disclosures and political regime shifts. In November 2026, two prominent real-world episodes illustrated this dynamic: an independent investigation announced by NVIDIA's Board of Directors on November 8--9, 2026, followed by CEO Jensen Huang's resignation and transition to interim CEO Colette Kress on November 12, 2026, which drove sharp repricing and intraday turbulence in NVIDIA (NVDA) and semiconductor peers; and the early-November 2026 U.S.\ midterm elections, which shifted fiscal and regulatory expectations across technology sectors.
+Volatility forecasts can help risk teams prioritize review of the next trading session. Volatility is persistent \citep{engle1982autoregressive}, but a forecast based on recent prices may miss information in an unscheduled announcement. Financial dictionaries and domain-specific encoders offer reusable text signals \citep{loughran2011liability,araci2019finbert}. In this study, the language model also distinguishes event type and severity. For example, an earnings headline and a board investigation can have similar polarity while describing different risks.
 
-While early financial machine learning prototypes often attempt to predict next-day return direction, directional forecasting suffers from low signal-to-noise ratios near random-walk efficiency. By contrast, financial volatility exhibits pronounced clustering \citep{engle1982autoregressive} and event-driven regime jumps: alerting risk managers that the upcoming session faces abnormal volatility exceeding 1.5 historical standard deviations provides immediate operational utility for position sizing, margin management, and options hedging without betting on price direction.
+Historical news creates two attribution problems. Article revisions can contain market reactions that were unavailable at first publication. Scheduled earnings can also make a text model appear useful when it is primarily identifying a known event. We address the first problem with a conservative availability clock and a separate timing sensitivity check, and the second with a market-and-earnings baseline and an independent regular-day analysis. We define \emph{closed-book} scoring as hosted inference with retrieval tools disabled. Archived outputs provide an offline reproduction path. This setup cannot remove information stored in model parameters.
 
-However, integrating modern text models into volatility forecasting poses three recurring methodological and engineering barriers:
-\begin{enumerate}
-    \item \textbf{Deployment and semantic ceilings of legacy NLP:} Static financial lexicons \citep{loughran2011liability} fail on negation and mixed guidance (e.g., strong earnings paired with weak outlook), while local domain encoders such as FinBERT \citep{araci2019finbert} require multi-gigabyte PyTorch installations, truncate at 512 tokens, and output only three-class polarity rather than structured event severity or human-readable rationales.
-    \item \textbf{Look-ahead and reverse-causality leakage:} Same-day daily news alignment ($X_t \rightarrow \sigma_t$) is vulnerable to \emph{intraday reverse causality}, where afternoon post-hoc recap articles explain a morning sell-off that already occurred. Conversely, naive next-day alignment suffers from \emph{priced-in attenuation}, as morning news is absorbed by the afternoon close. Furthermore, hosted LLMs with server-side web search risk retrieving post-event outcomes unless strictly operated in closed-book mode.
-    \item \textbf{Scheduled-event confounding:} Without explicit earnings calendars and options-implied volatility (VIX) in the baseline, an LLM can appear predictive merely by acting as an indirect earnings-day detector rather than identifying unscheduled shocks.
-\end{enumerate}
+We ask three questions. \textbf{RQ1} asks whether text features improve out-of-sample ranking and early-warning decisions beyond the baseline. \textbf{RQ2} asks whether event impact or sentiment dispersion is associated with subsequent volatility after accounting for lagged volatility and multiple testing. \textbf{RQ3} asks how scores change as a known announcement enters the historical information set, and how the measured gains vary with panel coverage and timestamp assumptions. The three-stock backtest, the nine-stock extension, and the event replay answer different parts of these questions.
 
-To address these challenges, we design, implement, and rigorously audit a closed-book LLM volatility early-warning system powered by the DeepSeek API (\texttt{deepseek-flash}) \citep{deepseek2026docs}. Our contributions are fourfold:
-\begin{itemize}
-    \item \textbf{Lightweight, closed-book, auditable engineering:} We replace local deep-learning dependencies with an OpenAI-compatible DeepSeek client configured via a project-local \texttt{.venv} and \texttt{.env} API key, enforcing zero web-search tools, deterministic JSON output (\texttt{temperature=0.0}, non-thinking mode), and \texttt{sha256} persistent caching. Across 20,537 deduplicated headlines and 171 lead refinements spanning nine equities, total cumulative API cost is \$0.9186, with bit-for-bit offline reproduction verified under network isolation.
-    \item \textbf{Leakage-controlled half-day dual-target design:} We decouple morning (AM) and afternoon (PM) sessions and evaluate both total morning shock (\textbf{B1}, including overnight gap) and pure intraday morning volatility (\textbf{B2}, strictly excluding pre-market gaps) under conservative modification-time and bounded first-publication clocks.
-    \item \textbf{Noise-filtered event clustering and soft-winsorized routing:} We filter 64.7\% \texttt{market\_noise} articles, apply source-tiered exponential time decay and TF-IDF event clustering (\texttt{ClusterImpactSum}, \texttt{UniqueEventCount}, \texttt{NoveltyRatio}), introduce train-fold-only soft upper-tail log winsorization to eliminate linear saturation, and route B1 to a monotone classification ensemble and B2 to a continuous volatility regression ensemble.
-    \item \textbf{Transparent five-round empirical audit:} Rather than reporting a single cherry-picked configuration, we document five disciplined iterations (V1--V5), demonstrating how adding VIX and SEC 8-K earnings baselines exposes true non-earnings semantic value, establishing pre-registered Granger significance on B2 ($q=0.0112$), validating strict monotonic replay during the November 12 NVIDIA CEO transition, and quantifying cross-sectional and timestamp-latency boundaries across nine mega-cap technology stocks.
-\end{itemize}
-
-\section{Problem Formulation and Research Questions}
+\section{Prediction task and information timing}
 \label{sec:problem}
 
-\subsection{Time Alignment and Anti-Leakage Clocks}
-Let trading days follow the New York Stock Exchange (NYSE) calendar, accounting for daylight saving time, holidays, and early closes. To eliminate intraday reverse causality while mitigating cross-day signal decay, we partition each trading day $t$ into a morning session (AM: \texttt{09:30--12:30 EST}) and an afternoon session (PM: \texttt{12:30--16:00 EST}). Our primary early-warning target focuses on the morning session, which captures overnight corporate filings, after-hours earnings, and pre-market governance shocks:
-\begin{itemize}
-    \item \textbf{AM Feature Window (left-open, right-closed):} $\mathcal{W}_{t,\text{AM}} = (T_{t-1}\text{ 12:30 EST},\, T_t\text{ 09:30 EST}]$, seamlessly covering prior-afternoon developments, after-hours releases, and pre-market news with no blind gap.
-    \item \textbf{PM Feature Window (independent control):} $\mathcal{W}_{t,\text{PM}} = (T_t\text{ 09:30 EST},\, T_t\text{ 12:30 EST}]$.
-\end{itemize}
-Every news record carries a verified availability timestamp under two clocks: (i) a \textbf{conservative primary clock}, taking $\max(\text{published}, \text{modified})$ whenever a later revision timestamp exists so post-hoc edits can never leak forward; and (ii) a \textbf{bounded sensitivity clock}, retaining revisions within 1 hour of first publication, discarding articles revised after $>1$ hour whose titles contain post-close recap phrases, and reverting remaining delayed SEO edits to first publication.
+\paragraph{Session alignment.}
+We use the New York Stock Exchange calendar and report times in U.S.\ Eastern Time (ET), allowing for daylight saving time, holidays, and early closes. The morning session (AM) runs from 09:30 to 12:30 ET. The afternoon session (PM) runs from 12:30 to the scheduled close. For trading day $t$, the AM news window is $(t-1\text{ at }12{:}30,\ t\text{ at }09{:}30]$, where $t-1$ denotes the prior trading day. This window includes the prior afternoon and overnight releases. The PM news window is $(t\text{ at }09{:}30,\ t\text{ at }12{:}30]$. Lagged market features use completed bars. Early iterations also compared a close-to-next-close target.
 
-\subsection{Dual Volatility Targets (B1 vs.\ B2)}
-For each target session $s$, we construct a composite volatility estimator combining realized return magnitude and the Parkinson range estimator \citep{parkinson1980extreme}:
+\paragraph{News availability.}
+The conservative clock uses the later of archived publication and revision times where both are available. For SEC disclosures, the filing acceptance time determines availability. The bounded clock leaves revisions within one hour at their conservative time. For later revisions, it drops headlines containing recap phrases and assigns the remaining headline-only records to first publication. Refined leads are never backdated. The bounded analysis tests a plausible alternative alignment because the first-version text is often unavailable.
+
+\paragraph{Volatility targets.}
+Let $r_{s,k}$ be the log returns between the regular-hours opening price and the successive hourly closes in session $s$. Let $g_s=\ln(O_s/P_{s-1,\mathrm{close}})$ be the AM opening gap relative to the previous regular close. For target $b\in\{\mathrm{B1},\mathrm{B2}\}$, define
 \begin{equation}
-    \sigma_s = \max\left( \sqrt{\sum_{k=1}^{m_s} r_{s,k}^2}, \; \sqrt{\frac{1}{4\ln 2}\left(\ln\frac{H_s}{L_s}\right)^2} \right),
-    \label{eq:sigma}
+ \sigma_{s,b} =
+ \max\left\{
+ \sqrt{\sum_{k}r_{s,k}^{2}+\mathbb{I}(b=\mathrm{B1})g_s^2},
+ \frac{\ln(H_s/L_s)}{\sqrt{4\ln 2}}
+ \right\}.
+ \label{eq:sigma}
 \end{equation}
-where $H_s$ and $L_s$ are the session high and low prices and $\{r_{s,k}\}$ are hourly log returns within session $s$. We define two complementary morning targets:
-\begin{itemize}
-    \item \textbf{B1 (Total Morning Shock):} Includes the overnight gap return $r_{\text{gap}} = \ln(O_{t,\text{AM}} / P_{t-1,\text{close}})$ inside the realized sum of squares, capturing total overnight-plus-morning turbulence.
-    \item \textbf{B2 (Pure Intraday Morning Volatility):} Excludes $r_{\text{gap}}$ and computes $\sigma_s$ strictly from regular-hours \texttt{09:30--12:30 EST} prices. Predictions issued at \texttt{09:30 EST} therefore possess a 100\% strict temporal lead over B2.
-\end{itemize}
-Because U.S.\ equities follow an intraday U-shaped volatility curve, we standardize $\sigma_s$ separately within each stock and session type using the trailing $W=20$ same-type sessions:
-\begin{equation}
-    Z_s = \frac{\sigma_s - \mu_{\sigma, s-1}^{(20)}}{s_{\sigma, s-1}^{(20)}}, \qquad Y_s = \mathbb{I}(Z_s > \tau), \quad \tau = 1.5.
-    \label{eq:zscore}
-\end{equation}
+The range term uses the session high $H_s$ and low $L_s$ \citep{parkinson1980extreme}. B1 measures the combined opening gap and morning volatility. At 09:30 part of this target has already occurred. B2 omits the gap and measures the path from the regular-hours open. The classification label is $Y_{s,b}=\mathbb{I}(Z_{s,b}>1.5)$, where $Z_{s,b}$ standardizes $\sigma_{s,b}$ against the prior 20 windows of the same stock, session type, and target. B2 uses its own trailing distribution.
 
-\subsection{Core Research Questions}
-Our empirical investigation addresses three progressive research questions:
-\begin{description}
-    \item[RQ1 (Incremental Predictive Gain):] After controlling for technical indicators, market context (QQQ), options-implied volatility (VIX), and SEC-verified earnings calendars (Baseline A), do denoised DeepSeek sentiment features (Group C) and cluster-level event shock features (Group D) improve out-of-sample abnormal volatility discrimination (ROC-AUC, PR-AUC, Recall) across B1 and B2?
-    \item[RQ2 (Temporal Lead-Lag and Attribution):] Do clustered substantive event shocks (\texttt{ClusterImpactSum}) and sentiment dispersion (\texttt{SentStd}) statistically Granger-cause subsequent morning volatility after stock fixed effects, date-clustered standard errors, and Benjamini--Hochberg (BH) multiple-testing correction \citep{benjamini1995controlling}?
-    \item[RQ3 (Black-Swan Responsiveness and Boundaries):] During an acute governance shock (the November 12, 2026 NVIDIA CEO transition at \texttt{08:48 EST}), do raw model scores rise monotonically upon official announcement arrival, and how do cross-sectional coverage and historical timestamp latency bound real-world generalization across nine technology stocks?
-\end{description}
-
-\section{System Architecture and Methodology}
+\section{System architecture and models}
 \label{sec:method}
 
-\subsection{Closed-Book DeepSeek Extraction and Refactored Pipeline}
-All semantic inference uses the DeepSeek Chat Completions API (\texttt{base\_url="https://api.deepseek.com"}, model \texttt{deepseek-flash}, served by DeepSeek-V4.1-Flash) via the standard Python \texttt{openai} SDK \citep{deepseek2026docs}. To enforce strict closed-book scientific validity and reproducibility:
-\begin{enumerate}
-    \item \textbf{Zero web search:} No \texttt{tools} (\texttt{deepseek\_web\_search} or \texttt{deepseek\_read\_url}) are passed; every API response is programmatically verified to contain no \texttt{tool\_calls}, \texttt{server\_tool\_calls}, or web \texttt{annotations}.
-    \item \textbf{Deterministic structured output:} We set \texttt{temperature=0.0}, explicitly disable chain-of-thought reasoning during batch scoring via \texttt{extra\_body=\{"thinking": \{"type": "disabled"\}\}}, and enforce \texttt{response\_format=\{"type": "json\_object"\}} with empty-space fallback retries and strict schema validation.
-    \item \textbf{Two-stage scoring and persistent caching:} Headlines are batched (10 per request) under an information-isolation system prompt instructing the model to evaluate each headline as of one minute after publication without future knowledge. Each text returns \texttt{sentiment\_score} $\in [-1, 1]$, \texttt{confidence} $\in [0, 1]$, integer \texttt{impact\_level} $\in \{0,1,2,3\}$ calibrated with explicit financial anchors ($0$: noise/tutorials; $1$: routine commentary; $2$: earnings/analyst/supply shifts; $3$: CEO transition/board investigation/major sanctions), \texttt{event\_type} $\in \{\text{governance}, \text{earnings}, \text{macro\_policy}, \text{regulatory}, \text{product\_supply}, \text{market\_noise}\}$, and a concise rationale. Every record is cached by \texttt{sha256(model + prompt + normalized\_text)} in \texttt{cache/deepseek\_cache.jsonl} with a \$2.00 project spend ceiling. For Tier-1 high-impact items (\texttt{impact\_level} $\ge 2$) and SEC 8-K Exhibit 99.1 earnings releases, a Stage-2 pass refines scores using the opening lead paragraph ($\le 150$ words).
-\end{enumerate}
+Figure~\ref{fig:architecture} follows the three data paths from archived sources to the historical evaluation. News supplies semantic features, market and disclosure data supply the baseline, and realized prices supply the labels. Both training and inference use the same feature availability rules.
 
-The final codebase is refactored into 14 modular components under \texttt{src/} behind a single entry point (\texttt{src/run\_experiment\_pipeline.py}): \texttt{config}/\texttt{artifacts} (configuration and hash audits), \texttt{collection}/\texttt{news\_sources}/\texttt{market\_data} (market bars, SEC filings, and news ingestion), \texttt{semantic}/\texttt{scoring} (closed-book DeepSeek client and two-stage cache), \texttt{features}/\texttt{models}/\texttt{evaluation} (clustering, soft winsorization, routing, bootstrap, and Granger tests), and \texttt{backtest}/\texttt{research}/\texttt{portfolio}/\texttt{clock\_diagnostic} (Phase A, Phase B, and clock-matched diagnostics).
-
-\subsection{Denoising, Source Tiering, and TF-IDF Event Clustering}
-A central diagnostic finding from V2 was that 64.7\% of raw financial news records (5,075 of 7,845) were classified by DeepSeek as \texttt{market\_noise} (primarily retail listicles and SEO commentary), diluting genuine shocks. In V3--V5, we restrict semantic aggregation to \emph{substantive} items (\texttt{event\_type} $\neq$ \texttt{market\_noise} and \texttt{impact\_level} $\ge 1$), while retaining \texttt{NoiseShare} as an auxiliary feature. Each substantive article $i$ receives a composite weight:
-\begin{equation}
-    w_{s,i} = c_{s,i} \cdot w_{\text{tier}, i} \cdot \exp\left(-\lambda \Delta\tau_{s,i}\right), \qquad \lambda = 0.25\text{ h}^{-1},
-    \label{eq:weight}
-\end{equation}
-where $c_{s,i}$ is model confidence, $\Delta\tau_{s,i} \ge 0$ is hours elapsed before cutoff, and source tiers assign $w_{\text{tier}}=1.0$ to authoritative disclosures and wires (SEC filings, CNBC, AP, official releases), $0.3$ to industry outlets, and $0.1$ to retail aggregator sites.
-
-To prevent syndicated repetition of a single story from inflating shock intensity, we compute 1--2 gram TF-IDF cosine similarity across substantive headlines within each window and merge pairs exceeding $0.65$ via connected components into $K$ distinct event clusters $\{C_1, \dots, C_K\}$. We derive three anti-echo features:
-\begin{align}
-    \text{UniqueEventCount}_s &= \ln(1 + K), \\
-    \text{ClusterImpactSum}_s &= \ln\left(1 + \sum_{k=1}^{K} \max_{i \in C_k}\Big(w_{s,i} \cdot \max(0, \text{impact}_{s,i} - 1)\Big)\right), \\
-    \text{NoveltyRatio}_s &= \frac{1}{K}\sum_{k=1}^{K} \mathbb{I}\!\left(\max_{j \in \mathcal{H}_{s-3:s-1}} \text{sim}(C_k, j) < 0.55\right),
-\end{align}
-where $\mathcal{H}_{s-3:s-1}$ denotes substantive headlines from the prior three same-type windows. We further decouple negative polarity into non-negative risk intensities $\text{NegSentIntensity} = \max(0, -\text{SentMean})$ and $\text{NegMinIntensity} = \max(0, -\text{MinSentiment})$.
-
-\subsection{Feature Groups, Soft Winsorization, and Target-Specific Model Routing}
-We evaluate three nested feature sets to isolate incremental value:
-\begin{itemize}
-    \item \textbf{Group A (Zero-Leakage Strong Baseline):} 7 technical features (two lagged returns, 5- and 20-session volatility, volume ratio, RSI-14, prior range spread), 4 QQQ market features (lagged return, 5/20-session volatility, stock-to-QQQ volatility ratio), 3 CBOE \texttt{\^{}VIX} features (\texttt{vix\_close}, \texttt{vix\_ret1}, \texttt{vix\_z20}, available at prior \texttt{16:15 EST}), and 2 SEC 8-K Item 2.02 verified earnings indicators (\texttt{is\_earnings\_window}, \texttt{is\_earnings\_pre1d}).
-    \item \textbf{Group C (Denoised Sentiment + Novelty):} Group A plus weighted sentiment mean, sentiment dispersion (\texttt{SentStd}), negative ratio, momentum, news shock, sentiment-shock interaction, \texttt{NoiseShare}, \texttt{has\_news}, \texttt{UniqueEventCount}, and \texttt{NoveltyRatio}.
-    \item \textbf{Group D (Full Event Shock):} Group C plus \texttt{ClusterImpactSum}, \texttt{NegMinIntensity} (or \texttt{MinSentiment}), and \texttt{HasLevel3Event} (indicator for a Tier-1 level-3 event).
-\end{itemize}
-
-\paragraph{Soft Upper-Tail Winsorization.}
-In V4, hard quantile clipping at the 99th training percentile flattened extreme black-swan shocks, causing linear scores to dip paradoxically when an official announcement arrived. In V5, we replace upper-tail clipping inside each training fold with smooth logarithmic compression:
-\begin{equation}
-    \tilde{x}_j = \begin{cases}
-        q_{0.01, j}^{\text{train}}, & x_j < q_{0.01, j}^{\text{train}}, \\
-        x_j, & q_{0.01, j}^{\text{train}} \le x_j \le q_{0.99, j}^{\text{train}}, \\
-        q_{0.99, j}^{\text{train}} + \ln\!\left(1 + x_j - q_{0.99, j}^{\text{train}}\right), & x_j > q_{0.99, j}^{\text{train}},
-    \end{cases}
-    \label{eq:soft_winsor}
-\end{equation}
-applied to five heavy-tailed inputs (\texttt{ClusterImpactSum}, \texttt{NewsShock}, \texttt{volume\_ratio}, \texttt{vix\_z20}, \texttt{Interaction}) strictly prior to standardization, preventing sigmoid saturation while preserving strict monotonicity in the extreme tail.
-
-\paragraph{Target Routing and Endogenous Thresholds.}
-Reflecting distinct empirical signal geometries, we route \textbf{B1} to a classification ensemble combining 0.7 soft-winsorized L2 Logistic Regression ($C=1$) and 0.3 monotone-constrained shallow LightGBM \citep{ke2017lightgbm} (60 trees, max depth 3, 5 leaves, \texttt{min\_child\_samples=25}, $L_1=1.0$, $L_2=5.0$), enforcing $+1$ non-decreasing constraints on \texttt{ClusterImpactSum}, \texttt{NewsShock}, \texttt{HasLevel3Event}, \texttt{UniqueEventCount}, \texttt{NegRatio}, \texttt{NegSentIntensity}, \texttt{NegMinIntensity}, \texttt{Interaction}, \texttt{is\_earnings\_window}, and \texttt{vix\_z20}. For noisy pure-intraday \textbf{B2}, we route to a continuous regression ensemble combining 0.5 soft-winsorized Ridge ($\alpha=20$) and 0.5 monotone-constrained Huber LightGBM trained on clipped $Z_s \in [-2, 6]$, standardized on the inner validation split (trailing 35\% of each training fold) before equal-weight blending. Alert thresholds (85th percentile) and high-risk brief thresholds (95th percentile or $\ge 3.5\times$ training prior) are estimated strictly on this inner validation split, supplemented by a Tier-1 level-3 event-brief trigger.
-
-\section{Experimental Setup}
-\label{sec:setup}
-
-\paragraph{Panels and Data Sources.}
-Market OHLCV bars (daily, hourly regular-hours, and 15-minute extended-hours) are sourced from Yahoo Finance, VIX daily series from Cboe, and corporate disclosures from SEC EDGAR (72 Form 8-K Item 2.02 filings individually audited to confirm 8 quarterly earnings releases per ticker, excluding non-earnings delivery reports such as Tesla's 8 vehicle-delivery notices). Historical reference comparisons also incorporate FNSPID \citep{dong2024fnspid} after removing midnight \texttt{00:00:00 UTC} placeholders.
-\begin{itemize}
-    \item \textbf{Core Three-Stock Panel (Phase A):} NVDA, MSFT, and TSLA aligned on 469 common trading days (January 2, 2025 to November 19, 2026; 938 half-day windows per stock), yielding 723 out-of-sample AM sessions (72 abnormal under B1; 74 under B2; 711 non-earnings regular sessions and 12 earnings windows).
-    \item \textbf{Expanded Nine-Stock Panel (Phase B):} Adds AAPL, AMZN, META, GOOGL, AMD, and AVGO across the exact same 938 half-day calendar, aggregating 20,537 deduplicated ticker--headline records from CNBC, SEC filings, 24/7 Wall St., Finbold, SiliconANGLE, FinanceFeeds, Wccftech, Tom's Hardware, Network World, and official releases. Eight of nine stocks clear the 70\% half-day coverage gate (NVDA 94.1\%, AAPL 80.3\%, TSLA 76.5\%, AMD 74.0\%, AMZN 73.7\%, GOOGL 71.0\%, META 70.3\%, MSFT 70.0\%; AVGO 43.8\%). Applying all three corpus-quality gates (coverage $\ge 70\%$, overall negative share $\ge 15\%$, per-fold training substantive event share $\ge 10\%$) yields 4 qualified stocks under the conservative clock (AAPL, META, NVDA, TSLA; 948 non-earnings OOS AM sessions) and 3 under the bounded clock (AAPL, NVDA, TSLA; 711 sessions).
-\end{itemize}
-
-\paragraph{Evaluation and Statistical Inference.}
-We apply 5-fold expanding-window walk-forward validation (four folds through October 2026 plus November 2026 as a dedicated fifth fold), asserting \texttt{train.end <= test.cut} on every fold. Primary metrics include ROC-AUC, PR-AUC (Average Precision), Recall, Precision, Recall@Top15\%, and Lift@Top5\%. Paired $\Delta\text{AUC}$ 95\% confidence intervals use 1,000 moving-block bootstrap draws of 5 consecutive trading days, resampling all stocks on the same calendar dates jointly. Pre-registered Granger causality tests evaluate 4 primary hypotheses (pooled AM \texttt{ClusterImpactSum} and \texttt{SentStd}, joint lags 1--2, across B1 and B2) with stock fixed effects, date-clustered standard errors, and BH false-discovery-rate correction. TreeSHAP \citep{lundberg2020local} additivity is audited on raw tree outputs (maximum reconstruction error $4.88\times 10^{-15}$).
-
-\section{Results and Analysis}
-\label{sec:results}
-
-\subsection{Five-Round Diagnostic Evolution (V1--V5)}
-Table~\ref{tab:evolution} summarizes the full iterative trajectory across V1--V5, showing how resolving data-engineering and microstructure flaws—rather than tuning model complexity—drove the primary gains.
-
-\begin{table}[!htbp]
-  \caption{Iterative diagnostic progression from V1 to V5 across corpus, alignment, modeling, and cumulative DeepSeek API cost.}
-  \label{tab:evolution}
-  \centering
-  \small
-  \begin{tabularx}{\linewidth}{@{}l >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X r@{}}
-    \toprule
-    \textbf{Version} & \textbf{Root Cause Diagnosed \& Key Architectural Fix} & \textbf{Headline Out-of-Sample Result} & \textbf{Cum.\ Cost} \\
-    \midrule
-    \textbf{V1} & 96.6\% of NVDA texts were developer blogs (only 2 level-3 events); fixed 0.5/0.7 thresholds collapsed recall. & Half-day beats daily by $+0.092$ AUC (95\% CI $[+0.009, +0.183]$); NVDA AUC 0.610, Recall 7.4\%. & \$0.2119 \\
-    \textbf{V2} & Replaced with 7,845 financial news items (3 stocks), quantile thresholds, B1/B2 split; uncovered AM/PM conflict \& 64.7\% noise dilution. & NVDA Recall $7.4\% \rightarrow 25.9\%$; Nov 9 \& 12 triggered briefs; NVDA AM L2-C reached 0.747 AUC. & \$0.4843 \\
-    \textbf{V3} & Split AM/PM models, filtered \texttt{market\_noise}, source-tiered decay, monotone LGBM + B2 regression. & 3-stock conservative B1 AUC $0.635 \rightarrow 0.688$ ($+0.052$, significant); bounded LGBM 0.702; Granger $q=0.0745$. & \$0.4843 \\
-    \textbf{V4} & Added Cboe VIX + SEC 8-K earnings baseline, TF-IDF clustering, 4 pre-registered Granger tests; found hard-clipping B1 dip on Nov 12. & Baseline A jumped to 0.696; B2 Granger passed BH (\textbf{$q=0.0112$}); bounded B1 0.733 (non-earnings $+0.042$ sig.). & \$0.4843 \\
-    \textbf{V5} & Soft upper-tail log winsorization + negative-sentiment monotonicity; scaled to 9 stocks (20,537 texts) with offline verification. & 3-stock conservative B1 \textbf{0.707} (PR-AUC \textbf{0.301}, Recall \textbf{40.3\%}); Nov 12 B1/B2 \textbf{strictly monotonic}; 9-stock bounded qualified sig. & \textbf{\$0.9186} \\
-    \bottomrule
-  \end{tabularx}
-\end{table}
-
-\subsection{Core Three-Stock Morning Ablation and Candidate Selection (V5)}
-Table~\ref{tab:v5_core} presents the V5 final results on the three-stock core morning panel under the conservative primary clock. Among three candidate truncation designs compared on identical folds—V4 hard clipping, V5 soft winsorization, and V5 soft winsorization plus linear sign constraints—\textbf{V5 soft winsorization} is the sole candidate passing strict monotonic replay on both B1 and B2 while achieving the highest conservative non-earnings AUC on both targets (B1 0.669, B2 0.581).
-
-\begin{table}[!htbp]
-  \caption{V5 final three-stock pooled morning (AM) results (NVDA, MSFT, TSLA; 723 OOS sessions) under the conservative timestamp clock.}
-  \label{tab:v5_core}
-  \centering
-  \small
-  \resizebox{\linewidth}{!}{%
-  \begin{tabular}{@{}lcccccccc@{}}
-    \toprule
-    \textbf{Target} & \textbf{Pos.} & \textbf{Base A AUC} & \textbf{Full D AUC} & \textbf{D PR-AUC} & \textbf{Recall} & \textbf{Prec.} & \textbf{Non-Earnings D$-$A [95\% CI]} & \textbf{All-AM D$-$C [95\% CI]} \\
-    \midrule
-    \textbf{B1 (Total AM)} & 72 & 0.694 & \textbf{0.707} & \textbf{0.301} & \textbf{40.3\%} & \textbf{28.2\%} & $+0.015\;[-0.033, +0.064]$ & $\mathbf{+0.017\;[+0.002, +0.037]}$ \\
-    \textbf{B2 (Pure Intraday)} & 74 & 0.612 & \textbf{0.622} & \textbf{0.221} & 21.6\% & 20.5\% & $+0.011\;[-0.014, +0.038]$ & --- \\
-    \bottomrule
-  \end{tabular}}
-\end{table}
-
-Two substantive findings emerge. First, once explicit VIX and SEC 8-K earnings indicators are included in Baseline A (lifting A from 0.635 in V3 to 0.694 in V5), the overall B1 model reaches 0.707 ROC-AUC and 0.301 PR-AUC (versus a 10.0\% base rate), with cluster-level shock features (D) delivering a statistically significant $+0.017$ AUC gain over denoised sentiment alone (C, 95\% CI $[+0.002, +0.037]$). Second, conservative non-earnings $D-A$ intervals ($+0.015$ on B1, $+0.011$ on B2) remain positive in point estimate but span zero, reflecting conservative revision-timestamp delay.
-
-\begin{figure}[!htbp]
-  \centering
-  \includegraphics[width=\linewidth]{figures/fig_v5_dashboard.png}
-  \caption{V5 final dashboard on the three-stock core panel. \textbf{Left:} Conservative-clock pooled morning ROC-AUC progression across feature groups A, C, and D for B1 (total morning) and B2 (pure intraday). \textbf{Center \& Right:} Minute-level replay across the November 12, 2026 NVIDIA CEO transition (\texttt{08:48 EST} official GlobeNewswire release), confirming strict monotonic increases in both raw model scores and event-overlay display scores for B1 and B2.}
-  \label{fig:v5_dashboard}
+\begin{figure}[htbp]
+ \centering
+ \includegraphics[width=\linewidth]{figures/system_architecture.pdf}
+ \caption{Historical evaluation pipeline. The news and baseline paths meet at the decision cutoff. Realized prices supply labels for completed training windows and for scoring the held-out predictions. The nine-stock regular-day model and dedicated earnings review run on separate paths.}
+ \label{fig:architecture}
 \end{figure}
 
-\subsection{Pre-Registered Granger Lead-Lag Analysis (RQ2)}
-Across the four pre-registered pooled morning Granger tests on the three-stock panel (stock fixed effects, date-clustered standard errors), \texttt{ClusterImpactSum} at joint lags 1--2 significantly Granger-causes pure-intraday morning volatility \textbf{B2} ($F=5.955$, $p=0.0028$, BH-adjusted $q=0.0112 < 0.05$). The remaining three pre-registered tests (B1 \texttt{ClusterImpactSum} $q=0.297$, B1 \texttt{SentStd} $q=0.701$, B2 \texttt{SentStd} $q=0.074$) do not cross the 5\% threshold. When expanded to the unscreened full nine-stock panel, the lowest BH-adjusted $q$-value rises to $0.1189$, demonstrating that Granger lead-lag power depends strongly on cross-sectional corpus density.
+\subsection{Closed-book scoring and event features}
 
-\subsection{Event-Time Replay: November 12, 2026 NVIDIA CEO Transition (RQ3)}
-Table~\ref{tab:replay} details the minute-level replay around the \texttt{08:48 EST} official CEO transition release. Whereas V4's hard clipping caused raw B1 scores to fall from 0.709 to 0.694 upon announcement arrival, V5's soft upper-tail log compression restores strict monotonic responsiveness across both targets: B1 raw score rises monotonically from 0.7766 (\texttt{08:47}) to 0.7854 (\texttt{08:48}), 0.7875 (\texttt{08:49}), and 0.7958 (\texttt{09:30}), while B2 raw standardized regression score climbs from 1.1440 to 1.2581, 1.2930, and 1.5132.
+The DeepSeek Chat Completions API received \texttt{deepseek-flash} requests through the OpenAI-compatible client \citep{deepseek2026docs}. The project sends headlines in batches of up to ten. It omits retrieval tools, checks responses for tool calls and annotations, requests JSON, sets temperature to zero, and disables the API's thinking mode. Each score includes sentiment in $[-1,1]$, confidence in $[0,1]$, impact on a four-level scale, an event type, and a short rationale. Impact levels run from irrelevant or noise (0), through routine (1) and substantive (2), to major (3). The cache keys include the model identifier, prompt, and normalized text. In stage two, an available, timestamp-checked lead of up to 150 words supplements eligible tier-1 headlines with impact at least 2 and a non-noise event type. The refinement also records catalyst certainty and any explicitly stated change in guidance. Archive reuse fixes the inputs to the backtest without assuming that a new API call would return identical scores.
 
-\begin{table}[!htbp]
-  \caption{Minute-level replay of the November 12, 2026 NVIDIA CEO transition (\texttt{08:48 EST} official announcement) under V5 soft winsorization.}
-  \label{tab:replay}
-  \centering
-  \small
-  \begin{tabular}{@{}lccccc@{}}
-    \toprule
-    \textbf{ET Cutoff Snapshot} & \textbf{ClusterImpactSum} & \textbf{B1 Raw} & \textbf{B1 Overlay} & \textbf{B2 Raw (Std.)} & \textbf{B2 Overlay} \\
-    \midrule
-    \texttt{08:47} (1 min pre-release) & 1.337 & 0.7766 & 0.7867 & 1.1440 & 1.1895 \\
-    \texttt{08:48} (official release) & \textbf{1.722} & \textbf{0.7854} & \textbf{0.8176} & \textbf{1.2581} & \textbf{1.4081} \\
-    \texttt{08:49} (1 min post-release) & 1.747 & \textbf{0.7875} & \textbf{0.8190} & \textbf{1.2930} & \textbf{1.4412} \\
-    \texttt{09:30} (regular open) & 2.218 & \textbf{0.7958} & \textbf{0.8216} & \textbf{1.5132} & \textbf{1.6393} \\
-    \bottomrule
-  \end{tabular}
+In the three-stock V2 corpus, 5,075 of 7,845 records (64.7\%) carried the \texttt{market\_noise} label. The final aggregation excludes those labels and impact-zero items from substantive features, while retaining the resulting noise share. Each substantive item receives weight
+\[
+  w_i=c_i\,w_{\mathrm{source},i}\exp(-0.25\,\Delta t_i),
+\]
+where $c_i$ is confidence and $\Delta t_i$ is the elapsed time in hours from availability to cutoff. The source weights are 1.0, 0.3, and 0.1 for tiers 1, 2, and 3. Tier 1 includes official filings and established sources such as CNBC. Within each window, connected components of headline pairs with 1--2-gram TF-IDF cosine similarity above 0.65 define $K$ event clusters. \texttt{UniqueEventCount} is $\log(1+K)$. For cluster impact, we take the maximum $w_i\max(0,\mathrm{impact}_i-1)$ in each cluster and apply $\log(1+x)$ to their sum. The novelty ratio is the share of clusters whose highest similarity to any substantive headline in the prior three same-type windows is below 0.55. Empty windows retain a no-news indicator.
+
+\subsection{Ablation groups and prediction routes}
+
+\begin{description}
+ \item[A (baseline).] Lagged technical indicators and QQQ market context, three Cboe VIX features (level, log change, trailing standardized level), and two earnings indicators based on known notices or filings. The study assigns each VIX daily observation a 16:15 ET availability time and uses only a prior date. Date-only earnings notices are usable from the next local midnight. After-close results are aligned with the next trading morning.
+ \item[C (sentiment and news context).] A plus weighted sentiment and dispersion, negative share, sentiment momentum, news activity and its sentiment interaction, news presence and noise share, event count and novelty, and negative sentiment intensity.
+ \item[D (full).] C plus clustered impact, minimum sentiment expressed as a nonnegative intensity, and an indicator for a tier-1 impact-3 event. Thus $D-C$ measures the joint contribution of those three additions.
+\end{description}
+
+For the linear branches we fit the first and 99th percentiles ($q_l,q_h$) on the training data for five heavy-tailed features (cluster impact, news activity shock, volume ratio, standardized VIX, and the interaction). Values below $q_l$ are clipped. Values above $q_h$ become $q_h+\log(1+x-q_h)$ before standardization. Values between the quantiles are unchanged. Unlike hard upper clipping, this transformation still distinguishes observations in the upper tail. In the B1 linear branch, novelty can be dropped when its inner-training coefficient is negative and retaining it does not improve inner-validation AUC.
+
+B1 blends L2 logistic regression ($C=1$) and a LightGBM classifier \citep{ke2017lightgbm} with weights 0.7 and 0.3. B2 clips the regression target $Z$ to $[-2,6]$, then averages the inner-validation-standardized predictions from ridge regression ($\alpha=20$) and a Huber LightGBM regressor. The final trees apply nondecreasing constraints to selected risk features. These are featurewise constraints with other inputs held fixed. Appendix~\ref{app:reproduction} gives the settings. Raw model scores determine the ranking metrics. Event overlays used for display in the replay are saved separately.
+
+
+
+\section{Experimental design}
+\label{sec:setup}
+
+\paragraph{Data and panels.}
+Inputs include Yahoo Finance OHLCV bars, the Cboe daily VIX series, SEC EDGAR Form 8-K Item 2.02 filings and earnings exhibits, corporate news releases, and publisher headlines. The earlier NVDA daily reference used FNSPID after excluding records without usable intraday publication times \citep{dong2024fnspid}. The main calendar spans January 2, 2025 to November 19, 2026 (469 common trading days and 938 half-day windows per stock). Phase A includes NVDA, MSFT, and TSLA. Phase B adds AAPL, AMZN, META, GOOGL, AMD, and AVGO and includes 20,537 deduplicated stock--headline records. Earnings filings were screened for actual results, excluding delivery-only reports.
+
+\paragraph{Evaluation.}
+The walk-forward procedure splits by date so all records from a trading day remain together. It holds out four successive blocks and uses November 2026 as a fifth test block. Each training label must end at or before the earliest cutoff in its test block. The inner split uses the earlier 65\% of training dates for fitting and the later 35\% for validation, with the same timing guard. The 85th validation percentile sets the warning threshold and the 95th sets the statistical brief threshold. B1 can also trigger a brief when its score reaches 3.5 times the training abnormality rate. A tier-1 impact-3 record can trigger a separate event brief in Group D. The final model for a fold is then refit on its complete training set.
+
+ROC-AUC measures discrimination, and average precision (AP) summarizes the precision--recall curve. Recall and precision use the fold-specific warning threshold. Monthly top-15\% recall and top-5\% lift are retrospective ranking diagnostics and do not set live alert thresholds. Pointwise 95\% intervals for paired AUC differences use 1,000 bootstrap draws of five-trading-day blocks, resampling all stocks on a given date together. These intervals condition on the fitted models and observed predictions.
+
+\paragraph{Lead--lag tests.}
+We test whether lags one and two of cluster impact and sentiment dispersion jointly add information about subsequent AM volatility, controlling for own lags and stock fixed effects \citep{granger1969investigating}. We difference individual stock series when an augmented Dickey--Fuller test fails to reject a unit root at 5\% and cluster standard errors by trading date. The four prespecified tests (two features by two targets) receive Benjamini--Hochberg (BH) correction \citep{benjamini1995controlling}. A rejection supports a lead--lag association conditional on this model.
+
+\paragraph{Nine-stock screening and earnings separation.}
+A stock qualifies when at least 70\% of half-day windows have news, at least 15\% of its scored records are negative (sentiment below $-0.2$), and at least 10\% of its training news in every fold is substantive with impact at least 2. For Phase B we train a separate model on non-earnings observations. The model drops the earnings-window indicator and retains the advance-notice indicator. Earnings windows follow a mandatory-review branch with timestamp-matched lead scores and a separate record of risk level and guidance direction. The primary nine-stock evaluation requires at least 180 out-of-sample abnormal observations in the qualified panel, an incremental regular-day AUC interval above zero under the conservative clock, and a prespecified lead--lag test passing BH correction at 5\%.
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Three-stock ablation and candidate choice (RQ1)}
+
+Table~\ref{tab:v5_core} reports 723 out-of-sample stock-mornings, including 711 regular observations and 12 earnings windows. For B1, the full model reaches the 0.70 AUC target, with 29 detected anomalies among 103 alerts. For B2, the full model reaches 0.622 AUC, below the 0.66 target, with 16 detected anomalies among 78 alerts. The conservative all-morning $D-A$ intervals are $[-0.029,0.057]$ for B1 and $[-0.012,0.034]$ for B2. The pointwise B1 $D-C$ result is positive both across all mornings ($+0.015$; $[0.001,0.032]$) and in the regular-day slice ($+0.017$; $[0.002,0.037]$). The latter is a subgroup result from Phase A's pooled fit. Phase B uses independently trained regular-day models.
+
+\begin{table}[htbp]
+ \caption{Three-stock morning ablation under the conservative clock. Both targets use 723 held-out stock-mornings. AP, recall, and precision are for Group D. The paired regular-day contrasts evaluate the pooled model on the 711 non-earnings observations.}
+ \label{tab:v5_core}
+ \centering
+ \begin{tabular}{@{}lrr@{}}
+ \toprule
+ Measure & B1 (with gap) & B2 (regular hours) \\
+ \midrule
+ Abnormal observations & 72 & 74 \\
+ ROC-AUC, A / C / D & 0.694 / 0.692 / 0.707 & 0.612 / 0.620 / 0.622 \\
+ Average precision, D & 0.301 & 0.221 \\
+ Recall / precision, D & 40.3\% / 28.2\% & 21.6\% / 20.5\% \\
+ Regular-day $D-A$ AUC & $+0.015$ & $+0.011$ \\
+ \quad 95\% interval & $[-0.033,0.064]$ & $[-0.014,0.038]$ \\
+ \bottomrule
+ \end{tabular}
 \end{table}
 
-\subsection{Nine-Stock Expansion, Non-Earnings Split, and Timestamp Sensitivity}
-Separating the 36 out-of-sample earnings windows (which route to a dedicated mandatory-review branch paired with SEC 8-K Exhibit 99.1 leads) from non-earnings regular sessions isolates unscheduled event risk. Table~\ref{tab:nine_stock} reports paired non-earnings regular-day $D-A$ gains across the nine-stock Phase B study.
+The candidate comparison covers the archived V4 hard-clipped model, V5 soft compression, and V5 soft compression with additional linear coefficient constraints. The soft model was the only candidate for which both scores rose strictly at the three adjacent announcement cutoffs. Its conservative regular-day AUC was also highest among these candidates for both targets (0.669 and 0.581), although the sign-constrained model led in mean regular-day AP (0.1473 versus 0.1439). The hard-clipped control also differs in tree constraints and feature representation. The comparisons therefore support the choice of the V5 configuration without isolating the effect of compression alone. Appendix~\ref{app:history} places these findings in the five-round development sequence.
 
-\begin{table}[!htbp]
-  \caption{Nine-stock non-earnings regular-day out-of-sample ablation across timestamp clocks and corpus-qualified panels.}
-  \label{tab:nine_stock}
-  \centering
-  \small
-  \resizebox{\linewidth}{!}{%
-  \begin{tabular}{@{}lccccc@{}}
-    \toprule
-    \textbf{Clock \& Panel Scope} & \textbf{OOS Regular AM} & \textbf{B1 D AUC (PR)} & \textbf{B1 D$-$A [95\% CI]} & \textbf{B2 D AUC (PR)} & \textbf{B2 D$-$A [95\% CI]} \\
-    \midrule
-    Conservative $\cdot$ Full 9 Stocks & 2,133 & 0.664 (0.166) & $+0.0046\;[-0.0131, +0.0226]$ & 0.544 (0.109) & $+0.0028\;[-0.0080, +0.0137]$ \\
-    Conservative $\cdot$ Qualified 4 & 948 & 0.666 (0.175) & $+0.0222\;[-0.0028, +0.0494]$ & 0.563 (0.111) & $+0.0050\;[-0.0128, +0.0236]$ \\
-    Bounded $\cdot$ Qualified 3 & 711 & \textbf{0.680 (0.213)} & $\mathbf{+0.0597\;[+0.0168, +0.1087]}$ & \textbf{0.614 (0.150)} & $\mathbf{+0.0317\;[+0.0036, +0.0648]}$ \\
-    \bottomrule
-  \end{tabular}}
+\subsection{Lead--lag evidence (RQ2)}
+
+In the three-stock panel, only lagged cluster impact for B2 survives the 5\% BH threshold across the four primary tests (Table~\ref{tab:granger}). In the full nine-stock panel the minimum adjusted $q$ is 0.1189. The three-stock result is specific to the tested sample and model. It does not identify a causal effect of the news on prices.
+
+\begin{table}[htbp]
+ \caption{Prespecified lead--lag tests on the three-stock morning panel. Each joint test uses lags one and two of the listed news feature. The four tests use 1,401 stock-date rows each, with BH adjustment across the family.}
+ \label{tab:granger}
+ \centering
+ \begin{tabular}{@{}llrrr@{}}
+ \toprule
+ Target & Lagged feature & $F$ & $p$ & BH $q$ \\
+ \midrule
+ B1 & Cluster impact & 1.505 & 0.2230 & 0.2973 \\
+ B1 & Sentiment dispersion & 0.355 & 0.7012 & 0.7012 \\
+ B2 & Cluster impact & 5.955 & 0.0028 & 0.0112 \\
+ B2 & Sentiment dispersion & 3.326 & 0.0368 & 0.0736 \\
+ \bottomrule
+ \end{tabular}
 \end{table}
 
-Under the conservative clock, gains scale cleanly with corpus quality (B1 $D-A$ rises from $+0.0046$ across all 9 stocks to $+0.0222$ on the 4 qualified stocks, though intervals still cross zero). Under the bounded first-publication sensitivity clock on the 3 mutually qualified stocks (AAPL, NVDA, TSLA; 711 regular sessions), \textbf{both B1 ($+0.0597$, $[+0.0168, +0.1087]$) and B2 ($+0.0317$, $[+0.0036, +0.0648]$) achieve statistically significant positive gains}. A matched-stock, matched-date diagnostic on the exact same 711 sessions yields conservative gains of B1 $+0.0312$ and B2 $+0.0186$, with bounded-minus-conservative differences of B1 $+0.0286$ $[-0.0095, +0.0720]$ and B2 $+0.0131$ $[-0.0042, +0.0341]$.
+\subsection{Announcement replay (RQ3)}
 
-\subsection{Cost and Offline Reproducibility Audit}
-Across all five rounds, 20,537 unique nine-stock headlines (7,730 cached + 12,807 newly scored) and 171 lead refinements incurred a cumulative estimated cost of \textbf{\$0.918586} (well below the \$2.00 ceiling). V5 Phase A executed with \texttt{new\_api\_calls = 0}, identical pre/post usage-ledger hashes, and maximum TreeSHAP error $4.88\times 10^{-15}$. Full Phase B nine-stock offline replay under network isolation reproduced all 13 published output tables identically.
+NVIDIA announced a CEO transition at 08:48 ET on November 12, 2026 \citep{nvidia2026transition}. Figure~\ref{fig:replay} aligns the archived announcement with model scores at 08:47, 08:48, 08:49, and the subsequent 09:30 open. In the archived V4 run, the B1 score fell from 0.709 to 0.694 at the announcement cutoff. At the three adjacent V5 snapshots, raw B1 rises from 0.7766 to 0.7854 to 0.7875, while raw B2 rises from 1.1440 to 1.2581 to 1.2930. Cluster impact increases from 1.337 to 1.722 at release. The event brief was already active at 08:47, so the increases show an update to an existing warning. The last complete 15-minute bar before the announcement had closed at \$159.18, below the previous regular close of \$173.73. The bar that spans the announcement cannot identify the within-bar price sequence. This case informed candidate selection and provides a retrospective diagnostic of score response.
 
-\section{Limitations and Discussion}
+\begin{figure}[htbp]
+ \centering
+ \includegraphics[width=\linewidth]{figures/event_replay.pdf}
+ \caption{NVIDIA announcement replay under the conservative clock. Points mark selected cutoff snapshots, equally spaced for display. The vertical rule marks the 08:48 ET release. Solid lines show raw model scores and dashed lines show event overlays for display. B2 is a mean of validation-standardized regression scores and can exceed one.}
+ \label{fig:replay}
+\end{figure}
+
+\subsection{Nine-stock extension and the clock comparison (RQ1 and RQ3)}
+
+Eight of nine stocks meet the 70\% pre-scoring coverage gate, including all seven required tickers. AVGO reaches 43.8\%. Applying all quality gates leaves four stocks under the conservative clock (AAPL, META, NVDA, TSLA) and three under the bounded clock (AAPL, NVDA, TSLA). The full joint backtest records 224 B1 and 232 B2 abnormal mornings. The conservative qualified panel records just 101 of each, below the required 180. In separate regular-day fits, both conservative $D-A$ intervals include zero for the full and qualified panels (Table~\ref{tab:nine_stock}). The four Granger tests in the expanded panel also fail the 5\% BH threshold. Thus the Phase B primary acceptance criteria are unmet.
+
+\begin{table}[htbp]
+ \caption{Phase B regular-day results after separate training on non-earnings observations. AUC and AP values are for Group D. Gains compare D to A on the indicated stock-mornings with pointwise 95\% intervals.}
+ \label{tab:nine_stock}
+ \centering
+ \small
+ \begin{tabular}{@{}llrrl@{}}
+ \toprule
+ Clock and panel & Target & $n$ & AUC / AP & $D-A$ AUC [95\% interval] \\
+ \midrule
+ Conservative, full nine & B1 & 2,133 & 0.664 / 0.166 & $+0.0046$ $[-0.0131,0.0226]$ \\
+                       & B2 & 2,133 & 0.544 / 0.109 & $+0.0028$ $[-0.0080,0.0137]$ \\
+ \addlinespace
+ Conservative, qualified four & B1 & 948 & 0.666 / 0.175 & $+0.0222$ $[-0.0028,0.0494]$ \\
+                              & B2 & 948 & 0.563 / 0.111 & $+0.0050$ $[-0.0128,0.0236]$ \\
+ \addlinespace
+ Bounded, qualified three & B1 & 711 & 0.680 / 0.213 & $+0.0597$ $[0.0168,0.1087]$ \\
+                          & B2 & 711 & 0.614 / 0.150 & $+0.0317$ $[0.0036,0.0648]$ \\
+ \bottomrule
+ \end{tabular}
+\end{table}
+
+The bounded-clock gains on the three qualified stocks have pointwise intervals above zero. To isolate comparison from changes in panel membership, we match AAPL, NVDA, and TSLA on the same 711 stock-mornings (Figure~\ref{fig:clock}). The matched conservative gains are $+0.0312$ for B1 and $+0.0186$ for B2. The bounded-minus-conservative differences are $+0.0286$ ($[-0.0095,0.0720]$) and $+0.0131$ ($[-0.0042,0.0341]$), respectively. The matched intervals leave the clock effect unresolved. The dedicated earnings branch sends 36 windows per clock to review. All 36 have matched refined text, and the guidance-direction field is unspecified for each.
+
+\begin{figure}[htbp]
+ \centering
+ \includegraphics[width=\linewidth]{figures/clock_matched.pdf}
+ \caption{Matched clock diagnostic on the same 711 non-earnings stock-mornings (AAPL, NVDA, and TSLA). Points are paired AUC contrasts and lines are 95\% block-bootstrap intervals. The first two rows within each target show the full model minus baseline gain under each clock. The third shows the paired difference between those gains. Only the bounded-clock gain intervals exclude zero.}
+ \label{fig:clock}
+\end{figure}
+
+\subsection{Cost, explanations, and offline verification}
+\label{sec:audit}
+
+Phase B reused 7,730 previously scored stock--headline records and scored 12,807 more. The archive contains 171 lead refinements. Of 1,490 unverified lead candidates, 1,486 returned HTTP 403 and retained headline-only scores. The estimated additional API cost was \$0.434291 and the project total was \$0.918586, below the \$2 project ceiling. The estimate uses the usage ledger and applicable rates.
+
+The Phase A audit records zero new calls, an unchanged usage ledger, and worst-case TreeSHAP reconstruction error of $4.88\times10^{-15}$ for the boosted tree branch's raw output \citep{lundberg2020local}. This additivity check verifies the tree explanations at the model-output level. The Phase B offline audit checked hashes for 35 input files, regenerated 13 published result files, and verified that the usage ledger was unchanged. Reproduction steps and source files are listed in Appendix~\ref{app:reproduction}.
+
+\newpage
+\section{Limitations and implications}
 \label{sec:limitations}
 
-We highlight four candid methodological and practical boundaries:
-\begin{enumerate}
-    \item \textbf{Retrospective refinement and paused forward watcher:} Iterations V1--V5 share a common historical calendar ending November 19, 2026; automated Windows pre-market forward collection was disabled at study close. True out-of-time validation requires freezing V5 and logging real-time first-seen news over future trading weeks.
-    \item \textbf{Historical timestamp latency vs.\ unedited title snapshots:} Nearly 29\% of historical articles carried modification timestamps more than one hour after initial publication. While the conservative clock guarantees zero look-ahead, it introduces lag attenuation; conversely, the bounded clock lacks archived unedited first-version headlines and must be treated strictly as a sensitivity check.
-    \item \textbf{Web access and earnings-guidance depth:} Of 1,661 Stage-2 lead candidates, 1,486 returned HTTP 403 and fell back to headline-only scores. Moreover, opening paragraphs of SEC 8-K Exhibit 99.1 filings rarely state explicit deltas against prior management guidance, leaving the guidance-direction field marked ``unspecified'' across the 36 out-of-sample earnings windows.
-    \item \textbf{Sector concentration and parametric memory:} Results cover U.S.\ mega-cap technology and semiconductor equities and may not generalize identically to small-cap or non-U.S.\ markets. Although disabling web search and applying date-masking checks mitigate look-ahead, closed-book evaluation on pre-cutoff historical dates cannot mathematically rule out latent LLM pretraining memory.
-\end{enumerate}
+\paragraph{Historical selection and generalization.}
+The five rounds reused portions of the same calendar. The announcement case informed candidate selection, and the panel concentrates on nine U.S.\ equities. The reserved November block was out of sample relative to each fold's training data. Because it also informed retrospective model development, it cannot establish prospective operating performance. No prospective evaluation was conducted.
+
+\paragraph{Text provenance and timing.}
+About 29\% of the V2 corpus was timestamped more than one hour after first publication under the conservative clock. The bounded clock can assign a revised headline to an earlier time without an archived original. Neither clock establishes what a live system would have received. Limited lead access and missing explicit guidance reduce coverage of the earnings branch. Tool restrictions prevent retrieval during scoring, while the possibility of memorized historical events remains.
+
+\paragraph{Use of the scores.}
+A ranked risk signal can help prioritize human review. False alerts consume reviewer time, and scores calibrated on this archive may behave differently under new market or news conditions. Overreliance could also result in unnecessary actions or missed events. The observed warning precision and interval estimates describe the historical evaluation and provide the appropriate basis for interpreting the scores.
 
 \section{Conclusion}
-\label{sec:conclusion}
 
-We designed, iteratively refined, and audited a leakage-controlled abnormal volatility early-warning and attribution system powered by closed-book DeepSeek API calls. Our five-round investigation demonstrates that rigorous market-microstructure engineering—decoupling morning from afternoon sessions, filtering 64.7\% retail noise, clustering syndicated stories, applying train-fold soft upper-tail winsorization, and benchmarking against VIX and SEC-verified earnings calendars—matters far more than model complexity. Under conservative clocks, V5 reaches 0.707 B1 ROC-AUC (0.301 PR-AUC, 40.3\% Recall), validates statistically significant cluster-impact gains over sentiment alone ($+0.017$), passes pre-registered pure-intraday Granger testing ($q=0.0112$), and responds strictly monotonically during the November 12, 2026 NVIDIA CEO transition—all at a cumulative API cost of \$0.92 with 100\% offline reproducibility. Real-time capture of unedited first-seen financial news streams represents the clearest path to translating bounded-clock non-earnings gains ($+0.060$ B1, $+0.032$ B2) into live risk management.
+On the three-stock panel, the full model achieves B1 AUC of 0.707, with a positive pointwise regular-day contrast against the sentiment group. The B2 lead--lag result and the announcement replay describe temporal association and model response within this archive. Conservative regular-day gains over the baseline remain uncertain. The nine-stock extension misses its primary thresholds, and the paired timing comparison leaves the effect of earlier timestamps unresolved.
 
+\clearpage
 \bibliographystyle{plainnat}
 \bibliography{references}
 
-\newpage
-\input{checklist}
 
+
+\clearpage
+\appendix
+
+\section{Development history}
+\label{app:history}
+
+Table~\ref{tab:evolution} records the diagnostic role of each round. Its examples use different targets, corpora, or evaluation panels.
+
+\begin{table}[h]
+ \caption{Five experimental rounds and their role in the final design. Costs are cumulative API estimates.}
+ \label{tab:evolution}
+ \centering
+ \small
+ \begin{tabularx}{\linewidth}{@{}lYYr@{}}
+ \toprule
+ Round & Change & Selected result & Cost \\
+ \midrule
+ V1 & Compared NVDA half-day and next-day horizons, with a fixed 0.5 warning threshold. & Recent half-day AUC rose from 0.577 to 0.610. Four of 54 anomalies were detected. The half-day minus daily difference in text gains was $+0.092$ ($[0.009,0.183]$). & \$0.2119 \\
+ \addlinespace
+ V2 & Switched to financial news (7,845 three-stock records) and fold-specific thresholds. & On the 482-window NVDA comparison, thresholding alone increased hits from 4 to 12. The revised model hit 14, with 25.9\% recall and 15.7\% precision. & \$0.4843 \\
+ \addlinespace
+ V3 & Fit AM and PM separately, removed noise from substantive aggregation, introduced source weights, and compared the B1 and B2 targets. & Conservative pooled B1 AM AUC increased from 0.635 to 0.688. The paired gain was $+0.052$ ($[0.003,0.100]$). & \$0.4843 \\
+ \addlinespace
+ V4 & Strengthened the baseline with VIX and earnings, clustered repeated headlines, and introduced the four primary lead--lag tests. & Conservative B1 baseline AUC reached 0.696. The bounded-clock regular-day B1 gain was $+0.042$ ($[0.002,0.090]$). & \$0.4843 \\
+ \addlinespace
+ V5 & Compressed the upper tail, compared candidates on the frozen calendar, and extended the archive to nine stocks with a separate earnings review branch. & Conservative three-stock B1 AUC reached 0.707. The nine-stock primary criteria remained unmet. & \$0.9186 \\
+ \bottomrule
+ \end{tabularx}
+\end{table}
+
+\section{Reproduction details}
+\label{app:reproduction}
+
+\paragraph{Exact settings.}
+The first four tests split the latter half of trading dates before November 2, 2026 into contiguous groups of nearly equal length. The fifth uses the remaining dates through November 19. Both LightGBM branches use 80 trees, learning rate 0.035, depth at most 4, up to 9 leaves, minimum leaf size 12, minimum bin count 1, at most 127 bins, $L_1=0.75$, $L_2=5$, seed 24, and two worker threads. B2 Huber uses $\alpha=0.9$. The nondecreasing constraints apply to cluster impact, activity shock, the tier-1 impact-3 flag, event count, negative share, mean and minimum negative intensity, the sentiment--activity interaction, earnings window, and standardized VIX when present. Negative intensity is $\max(0,-\mathrm{sentiment})$. Novelty is unconstrained.
+
+\paragraph{Code and archived data.}
+The project repository contains the prompts, scored data, split logic, prediction files, and checksums. From its root, with the environment in \texttt{requirements.txt} installed, run:
+\begin{verbatim}
+python src/run_experiment_pipeline.py --phase a
+python src/run_experiment_pipeline.py --phase b --offline
+python src/run_experiment_pipeline.py clock-diagnostic
+\end{verbatim}
+These reproduction paths use local historical inputs and archived scores and do not require an API key. New scoring uses hosted inference. The local tabular backtests use CPU. The study did not systematically log peak memory, CPU models, or wall-clock runtimes for each round.
+
+\paragraph{Evidence files.}
+Phase A tables and replay snapshots are under \path{results/v5/}. Phase B screening, regular-day results, acceptance, timing tests, and the reproduction audit are under \path{results/v5/phase_b/}. Regenerate the figures with \path{paper/figures/build_figures.py}.
+
+\clearpage
+\input{checklist}
 \end{document}
