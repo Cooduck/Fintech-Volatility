@@ -1,15 +1,25 @@
 \documentclass{article}
 
 \usepackage[preprint]{neurips_2026}
+\usepackage[no-math]{fontspec}
 \usepackage[T1]{fontenc}
 \usepackage{amsmath,amsfonts,booktabs,graphicx,microtype,tabularx,xcolor}
 \usepackage[hidelinks]{hyperref}
+\renewcommand{\rmdefault}{ptm}
+\renewcommand{\sfdefault}{phv}
 \renewcommand{\ttdefault}{lmtt}
+\DeclareMicrotypeSet{reportfonts}{encoding={OT1,T1,TS1,OML,OMS}}
+\UseMicrotypeSet[protrusion]{reportfonts}
+\IfFontExistsTF{SimSun}
+  {\newfontfamily{\chineseauthors}{SimSun}[BoldFont=SimHei]}
+  {\newfontfamily{\chineseauthors}{FandolSong-Regular.otf}[BoldFont=FandolSong-Bold.otf]}
+\hypersetup{pdfauthor={简校滨、李星源、赵国瑞、钟铭兴、彭翔}}
 
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
 
 \title{Abnormal Morning Volatility and Closed-Book LLM News Scoring: A Historical Backtest}
-\author{Financial Technology and Artificial Intelligence\\Course research report}
+\author{{\chineseauthors 简校滨\quad 李星源\quad 赵国瑞\quad 钟铭兴\quad 彭翔}\\
+Financial Technology and Artificial Intelligence course project team}
 
 \begin{document}
 \maketitle
