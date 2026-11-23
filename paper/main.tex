@@ -39,6 +39,9 @@ We use the New York Stock Exchange calendar and report times in U.S.\ Eastern Ti
 \paragraph{News availability.}
 The conservative clock uses the later of archived publication and revision times where both are available. For SEC disclosures, the filing acceptance time determines availability. The bounded clock leaves revisions within one hour at their conservative time. For later revisions, it drops headlines containing recap phrases and assigns the remaining headline-only records to first publication. Refined leads are never backdated. The bounded analysis tests a plausible alternative alignment because the first-version text is often unavailable.
 
+\paragraph{Why the morning window starts at 12:30 on the previous trading day.}
+On a regular trading day, a 16:00 start would leave a 3.5-hour gap between the afternoon model's 12:30 cutoff and the next morning's news window. A Fed decision, an unexpected company disclosure, or a headline whose conservative availability time falls in that interval would miss both windows. Prices can incorporate much of a disclosure before the close while elevated volatility persists \citep{engle1982autoregressive}. Late-session disclosures leave less time for regular-hours trading. Overnight repositioning and hedging are plausible channels for a carryover into the next open. The study does not measure those channels separately, and only B1 includes the opening gap.
+
 \paragraph{Volatility targets.}
 Let $r_{s,k}$ be the log returns between the regular-hours opening price and the successive hourly closes in session $s$. Let $g_s=\ln(O_s/P_{s-1,\mathrm{close}})$ be the AM opening gap relative to the previous regular close. For target $b\in\{\mathrm{B1},\mathrm{B2}\}$, define
 \begin{equation}
@@ -73,6 +76,8 @@ In the three-stock V2 corpus, 5,075 of 7,845 records (64.7\%) carried the \textt
 \]
 where $c_i$ is confidence and $\Delta t_i$ is the elapsed time in hours from availability to cutoff. The source weights are 1.0, 0.3, and 0.1 for tiers 1, 2, and 3. Tier 1 includes official filings and established sources such as CNBC. Within each window, connected components of headline pairs with 1--2-gram TF-IDF cosine similarity above 0.65 define $K$ event clusters. \texttt{UniqueEventCount} is $\log(1+K)$. For cluster impact, we take the maximum $w_i\max(0,\mathrm{impact}_i-1)$ in each cluster and apply $\log(1+x)$ to their sum. The novelty ratio is the share of clusters whose highest similarity to any substantive headline in the prior three same-type windows is below 0.55. Empty windows retain a no-news indicator.
 
+At a 09:30 cutoff on the next calendar day, news available at 13:00 and 15:30 on the previous day retains about 0.6\% and 1.1\% of its pre-decay weight, respectively. News available at 08:30 on the cutoff day retains about 78\%. These factors enter weighted sentiment and \texttt{ClusterImpactSum}. Normalized sentiment averages depend on relative weights. Counts and event flags can still reflect older news.
+
 \subsection{Ablation groups and prediction routes}
 
 \begin{description}
@@ -80,6 +85,8 @@ where $c_i$ is confidence and $\Delta t_i$ is the elapsed time in hours from ava
  \item[C (sentiment and news context).] A plus weighted sentiment and dispersion, negative share, sentiment momentum, news activity and its sentiment interaction, news presence and noise share, event count and novelty, and negative sentiment intensity.
  \item[D (full).] C plus clustered impact, minimum sentiment expressed as a nonnegative intensity, and an indicator for a tier-1 impact-3 event. Thus $D-C$ measures the joint contribution of those three additions.
 \end{description}
+
+Group A observes completed afternoon price activity through the lagged high--low range (\texttt{spread}) and the stock-to-QQQ ratio of lagged volatility estimates, whose numerator is \texttt{sigma\_lag1}. It also uses \texttt{vol5}, the rolling dispersion of five prior same-session returns. The $D-A$ comparison therefore measures predictive gain over these observable market controls. This comparison uses the full news window and leaves the contribution of prior-afternoon news, and how much of its effect was already absorbed by prices, unidentified.
 
 For the linear branches we fit the first and 99th percentiles ($q_l,q_h$) on the training data for five heavy-tailed features (cluster impact, news activity shock, volume ratio, standardized VIX, and the interaction). Values below $q_l$ are clipped. Values above $q_h$ become $q_h+\log(1+x-q_h)$ before standardization. Values between the quantiles are unchanged. Unlike hard upper clipping, this transformation still distinguishes observations in the upper tail. In the B1 linear branch, novelty can be dropped when its inner-training coefficient is negative and retaining it does not improve inner-validation AUC.
 
@@ -203,7 +210,6 @@ Phase B reused 7,730 previously scored stock--headline records and scored 12,807
 
 The Phase A audit records zero new calls, an unchanged usage ledger, and worst-case TreeSHAP reconstruction error of $4.88\times10^{-15}$ for the boosted tree branch's raw output \citep{lundberg2020local}. This additivity check verifies the tree explanations at the model-output level. The Phase B offline audit checked hashes for 35 input files, regenerated 13 published result files, and verified that the usage ledger was unchanged. Reproduction steps and source files are listed in Appendix~\ref{app:reproduction}.
 
-\newpage
 \section{Limitations and implications}
 \label{sec:limitations}
 
@@ -220,7 +226,6 @@ A ranked risk signal can help prioritize human review. False alerts consume revi
 
 On the three-stock panel, the full model achieves B1 AUC of 0.707, with a positive pointwise regular-day contrast against the sentiment group. The B2 lead--lag result and the announcement replay describe temporal association and model response within this archive. Conservative regular-day gains over the baseline remain uncertain. The nine-stock extension misses its primary thresholds, and the paired timing comparison leaves the effect of earlier timestamps unresolved.
 
-\clearpage
 \bibliographystyle{plainnat}
 \bibliography{references}
 
